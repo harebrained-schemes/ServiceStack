@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 
 namespace ServiceStack.Logging.Log4Net
 {
@@ -21,7 +22,7 @@ namespace ServiceStack.Logging.Log4Net
         {
             if (configureLog4Net)
             {
-                var repository = log4net.LogManager.GetRepository("root");
+                var repository = log4net.LogManager.GetRepository(Assembly.GetEntryAssembly());
                 log4net.Config.XmlConfigurator.Configure(repository);
             }
         }
@@ -33,7 +34,7 @@ namespace ServiceStack.Logging.Log4Net
         public Log4NetFactory(string log4NetConfigurationFile)
         {
             //Restart logging if necessary
-            log4net.Repository.ILoggerRepository rootRepository = log4net.LogManager.GetRepository("root");
+            log4net.Repository.ILoggerRepository rootRepository = log4net.LogManager.GetRepository(Assembly.GetEntryAssembly());
             if (rootRepository != null)
                 rootRepository.Shutdown();
 
