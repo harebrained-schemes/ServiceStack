@@ -11,7 +11,7 @@ namespace ServiceStack.Logging.Log4Net
 
         public Log4NetLogger(string typeName)
         {
-            _log = log4net.LogManager.GetLogger(typeName);
+            _log = log4net.LogManager.GetLogger("root", typeName);
         }
 
         /// <summary>

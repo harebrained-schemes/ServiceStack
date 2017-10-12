@@ -21,7 +21,8 @@ namespace ServiceStack.Logging.Log4Net
         {
             if (configureLog4Net)
             {
-                log4net.Config.XmlConfigurator.Configure();
+                var repository = log4net.LogManager.GetRepository("root");
+                log4net.Config.XmlConfigurator.Configure(repository);
             }
         }
 
@@ -32,14 +33,14 @@ namespace ServiceStack.Logging.Log4Net
         public Log4NetFactory(string log4NetConfigurationFile)
         {
             //Restart logging if necessary
-            log4net.Repository.ILoggerRepository rootRepository = log4net.LogManager.GetRepository();
+            log4net.Repository.ILoggerRepository rootRepository = log4net.LogManager.GetRepository("root");
             if (rootRepository != null)
                 rootRepository.Shutdown();
 
             if (File.Exists(log4NetConfigurationFile))
-                log4net.Config.XmlConfigurator.ConfigureAndWatch(new FileInfo(log4NetConfigurationFile));
+                log4net.Config.XmlConfigurator.ConfigureAndWatch(rootRepository, new FileInfo(log4NetConfigurationFile));
             else
-                log4net.Config.XmlConfigurator.Configure();
+                log4net.Config.XmlConfigurator.Configure(rootRepository);
         }
 
         /// <summary>
