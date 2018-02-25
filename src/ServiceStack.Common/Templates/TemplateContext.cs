@@ -11,7 +11,7 @@ using ServiceStack.Configuration;
 using ServiceStack.IO;
 using ServiceStack.Text;
 using ServiceStack.VirtualPath;
-#if NETSTANDARD1_3
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
@@ -318,9 +318,9 @@ namespace ServiceStack.Templates
 
         public TemplateContext ScanType(Type type)
         {
-            if (!type.IsAbstract())
+            if (!type.IsAbstract)
             {
-                if (typeof(TemplateFilter).IsAssignableFromType(type))
+                if (typeof(TemplateFilter).IsAssignableFrom(type))
                 {
                     if (TemplateFilters.All(x => x?.GetType() != type))
                     {
@@ -329,7 +329,7 @@ namespace ServiceStack.Templates
                         TemplateFilters.Add(filter);
                     }
                 }
-                else if (typeof(TemplateCodePage).IsAssignableFromType(type))
+                else if (typeof(TemplateCodePage).IsAssignableFrom(type))
                 {
                     if (CodePages.Values.All(x => x != type))
                     {

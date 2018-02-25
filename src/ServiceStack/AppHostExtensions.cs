@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Funq;
 using ServiceStack.Logging;
 using ServiceStack.Text;
@@ -37,8 +38,7 @@ namespace ServiceStack
                 {
                     try
                     {
-                        var plugin = pluginType.CreateInstance() as IPlugin;
-                        if (plugin != null)
+                        if (pluginType.CreateInstance() is IPlugin plugin)
                         {
                             ssHost.LoadPlugin(plugin);
                         }
@@ -96,14 +96,9 @@ namespace ServiceStack
             return HostContext.AppHost.ResolveLocalizedString(text, request);
         }
 
-        public static Exception ApplyResponseConverters(this Exception ex, IRequest httpReq)
-        {
-            return (HostContext.AppHost.ApplyResponseConverters(httpReq, ex) as Exception) ?? ex;
-        }
-
         public static IAppHost Start(this IAppHost appHost, IEnumerable<string> urlBases)
         {
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
             var listener = (ServiceStack.Host.HttpListener.HttpListenerBase)appHost;
             listener.Start(urlBases);
 #endif

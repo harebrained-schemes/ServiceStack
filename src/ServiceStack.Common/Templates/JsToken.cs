@@ -6,11 +6,11 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using ServiceStack.Text;
 
-#if NETSTANDARD1_3
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
-namespace ServiceStack.Templates //TODO move to ServiceStack.Text when baked
+namespace ServiceStack.Templates
 {
     public abstract class JsToken : IRawString
     {

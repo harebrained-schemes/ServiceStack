@@ -109,7 +109,7 @@ namespace ServiceStack.Server.Tests.Messaging
         private readonly Func<IMessageService> createMqServerFn;
 
         public AppHost(Func<IMessageService> createMqServerFn)
-            : base("Rabbit MQ Test Host", typeof(HelloService).GetAssembly())
+            : base("Rabbit MQ Test Host", typeof(HelloService).Assembly)
         {
             this.createMqServerFn = createMqServerFn;
         }
@@ -231,6 +231,38 @@ namespace ServiceStack.Server.Tests.Messaging
                 using (var mqClient = mqServer.CreateMessageQueueClient())
                 {
                     mqClient.Publish(new HelloIntro { Name = "World" });
+
+                    IMessage<HelloIntro> dlqMsg = mqClient.Get<HelloIntro>(QueueNames<HelloIntro>.Dlq);
+                    mqClient.Ack(dlqMsg);
+
+                    Assert.That(called, Is.EqualTo(2));
+                    Assert.That(dlqMsg.GetBody().Name, Is.EqualTo("World"));
+                    Assert.That(dlqMsg.Error.ErrorCode, Is.EqualTo(typeof(ArgumentException).Name));
+                    Assert.That(dlqMsg.Error.Message, Is.EqualTo("Name"));
+                }
+            }
+        }
+
+        [Test]
+        public void Message_with_ReplyTo_that_throw_exceptions_are_retried_then_published_to_Request_dlq()
+        {
+            using (var mqServer = CreateMqServer(retryCount: 1))
+            {
+                var called = 0;
+                mqServer.RegisterHandler<HelloIntro>(m =>
+                {
+                    Interlocked.Increment(ref called);
+                    throw new ArgumentException("Name");
+                });
+                mqServer.Start();
+
+                using (var mqClient = mqServer.CreateMessageQueueClient())
+                {
+                    const string replyToMq = "mq:Hello.replyto";
+                    mqClient.Publish(new Message<HelloIntro>(new HelloIntro { Name = "World" })
+                    {
+                        ReplyTo = replyToMq
+                    });
 
                     IMessage<HelloIntro> dlqMsg = mqClient.Get<HelloIntro>(QueueNames<HelloIntro>.Dlq);
                     mqClient.Ack(dlqMsg);
@@ -367,7 +399,7 @@ namespace ServiceStack.Server.Tests.Messaging
         [Test]
         public void Does_process_messages_in_BasicAppHost()
         {
-            using (var appHost = new BasicAppHost(typeof(HelloService).GetAssembly())
+            using (var appHost = new BasicAppHost(typeof(HelloService).Assembly)
             {
                 ConfigureAppHost = host =>
                 {
@@ -462,7 +494,7 @@ namespace ServiceStack.Server.Tests.Messaging
         public void Does_dispose_request_scope_dependency_in_PostMessageHandler()
         {
             var disposeCount = 0;
-            using (var appHost = new BasicAppHost(typeof(HelloWithDepService).GetAssembly())
+            using (var appHost = new BasicAppHost(typeof(HelloWithDepService).Assembly)
             {
                 ConfigureAppHost = host =>
                 {

@@ -74,12 +74,10 @@ namespace ServiceStack
 
         private void CreateReceiverHandler<T>(ServerEventsClient client, ServerEventMessage msg)
         {
-            var receiver = Resolver.TryResolve<T>() as IReceiver;
-            if (receiver == null)
+            if (!(Resolver.TryResolve<T>() is IReceiver receiver))
                 throw new ArgumentNullException("receiver", "Resolver returned null receiver");
 
-            var injectRecevier = receiver as ServerEventReceiver;
-            if (injectRecevier != null)
+            if (receiver is ServerEventReceiver injectRecevier)
             {
                 injectRecevier.Client = client;
                 injectRecevier.Request = msg;
@@ -87,8 +85,7 @@ namespace ServiceStack
 
             var target = msg.Target.Replace("-", ""); //css bg-image
 
-            ReceiverExecContext receiverCtx;
-            ReceiverExec<T>.RequestTypeExecMap.TryGetValue(target, out receiverCtx);
+            ReceiverExec<T>.RequestTypeExecMap.TryGetValue(target, out var receiverCtx);
             if (StrictMode && receiverCtx != null && !receiverCtx.Method.EqualsIgnoreCase(target))
                 receiverCtx = null;
 
@@ -158,7 +155,7 @@ namespace ServiceStack
             RequestTypeExecMap = new Dictionary<string, ReceiverExecContext>(StringComparer.OrdinalIgnoreCase);
             MethodNameExecMap = new Dictionary<string, ReceiverExecContext>(StringComparer.OrdinalIgnoreCase);
 
-            var methods = typeof(T).GetMethodInfos().Where(x => x.IsPublic && !x.IsStatic);
+            var methods = typeof(T).GetMethods().Where(x => x.IsPublic && !x.IsStatic);
             foreach (var mi in methods)
             {
                 var actionName = mi.Name;
@@ -216,11 +213,6 @@ namespace ServiceStack
 
         private static ActionInvokerFn CreateExecFn(Type requestType, MethodInfo mi)
         {
-            //TODO optimize for PCL clients
-#if PCL
-            return (instance, request) =>
-                mi.Invoke(instance, new[] { request });
-#else
             var receiverType = typeof(T);
 
             var receiverParam = Expression.Parameter(typeof(object), "receiverObj");
@@ -250,16 +242,10 @@ namespace ServiceStack
                     return null;
                 };
             }
-#endif
         }
 
         private static ActionInvokerFn CreateExecFn(MethodInfo mi)
         {
-            //TODO optimize for PCL clients
-#if PCL
-            return (instance, request) =>
-                mi.Invoke(instance, new Object[0]);
-#else
             var receiverType = typeof(T);
 
             var receiverParam = Expression.Parameter(typeof(object), "receiverObj");
@@ -285,7 +271,6 @@ namespace ServiceStack
                     return null;
                 };
             }
-#endif
         }
     }
 

@@ -15,9 +15,8 @@ using ServiceStack.Logging;
 using ServiceStack.Text;
 using ServiceStack.Validation;
 using ServiceStack.Web;
-using static System.String;
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
 using ServiceStack.Host.AspNet;
 using ServiceStack.Host.HttpListener;
 #endif
@@ -34,11 +33,11 @@ namespace ServiceStack
         /// <returns>string value or null if it doesn't exist</returns>
         public static string GetItemOrCookie(this IRequest httpReq, string name)
         {
-            object value;
-            if (httpReq.Items.TryGetValue(name, out value)) return value.ToString();
+            if (httpReq.Items.TryGetValue(name, out var value))
+                return value.ToString();
 
-            Cookie cookie;
-            if (httpReq.Cookies.TryGetValue(name, out cookie)) return cookie.Value;
+            if (httpReq.Cookies.TryGetValue(name, out var cookie))
+                return cookie.Value;
 
             return null;
         }
@@ -60,13 +59,11 @@ namespace ServiceStack
 
             //IIS will assign null to params without a name: .../?some_value can be retrieved as req.Params[null]
             //TryGetValue is not happy with null dictionary keys, so we should bail out here
-            if (IsNullOrEmpty(name)) return null;
+            if (string.IsNullOrEmpty(name)) return null;
 
-            Cookie cookie;
-            if (httpReq.Cookies.TryGetValue(name, out cookie)) return cookie.Value;
+            if (httpReq.Cookies.TryGetValue(name, out var cookie)) return cookie.Value;
 
-            object oValue;
-            if (httpReq.Items.TryGetValue(name, out oValue)) return oValue.ToString();
+            if (httpReq.Items.TryGetValue(name, out var oValue)) return oValue.ToString();
 
             return null;
         }
@@ -98,7 +95,7 @@ namespace ServiceStack
 
             int pos;
 
-            if (resolvedPathInfo == Empty)
+            if (resolvedPathInfo == string.Empty)
             {
                 pos = httpReq.AbsoluteUri.IndexOf('?');
                 if (pos == -1)
@@ -117,7 +114,7 @@ namespace ServiceStack
 
         public static string GetUrlHostName(this IRequest httpReq)
         {
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
             var aspNetReq = httpReq as ServiceStack.Host.AspNet.AspNetRequest;
             if (aspNetReq != null)
             {
@@ -151,7 +148,7 @@ namespace ServiceStack
                 return null;
 
             var path = request.PathInfo;
-            return IsNullOrEmpty(path) || path[path.Length - 1] == '/'
+            return string.IsNullOrEmpty(path) || path[path.Length - 1] == '/'
                 ? path
                 : path.Substring(0, path.LastIndexOf('/') + 1);
         }
@@ -238,9 +235,8 @@ namespace ServiceStack
 
         public static string GetJsonpCallback(this IRequest httpReq)
         {
-            return httpReq?.QueryString[Keywords.Callback];
+            return httpReq?.QueryString[Keywords.Callback].SafeVarName();
         }
-
 
         public static Dictionary<string, string> CookiesAsDictionary(this IRequest httpReq)
         {
@@ -249,16 +245,18 @@ namespace ServiceStack
 
         public static int ToStatusCode(this Exception ex)
         {
-            var hasStatusCode = ex as IHasStatusCode;
-            if (hasStatusCode != null)
+            if (ex is IHasStatusCode hasStatusCode)
                 return hasStatusCode.StatusCode;
+
+            if (ex is WebException webEx)
+                return (int) webEx.GetStatus().GetValueOrDefault(HttpStatusCode.InternalServerError);
 
             if (HostContext.AppHost != null && HostContext.Config != null)
             {
                 var exType = ex.GetType();
                 foreach (var entry in HostContext.Config.MapExceptionToStatusCode)
                 {
-                    if (entry.Key.IsAssignableFromType(exType))
+                    if (entry.Key.IsAssignableFrom(exType))
                         return entry.Value;
                 }
             }
@@ -354,7 +352,7 @@ namespace ServiceStack
 
         public static string GetOperationNameFromLastPathInfo(string lastPathInfo)
         {
-            if (IsNullOrEmpty(lastPathInfo)) return null;
+            if (string.IsNullOrEmpty(lastPathInfo)) return null;
 
             var operationName = lastPathInfo.Substring("/".Length);
 
@@ -372,7 +370,7 @@ namespace ServiceStack
             return pathInfo;
         }
 
-#if NETSTANDARD1_6
+#if NETSTANDARD2_0
         public static string GetLastPathInfo(this Microsoft.AspNetCore.Http.HttpRequest request)
         {
             var rawUrl = Microsoft.AspNetCore.Http.Extensions.UriHelper.GetDisplayUrl(request);
@@ -393,7 +391,7 @@ namespace ServiceStack
             return new Uri(request.AbsoluteUri).GetLeftAuthority() + endpointsPath;
         }
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
         //http://stackoverflow.com/a/757251/85785
         static readonly string[] VirtualPathPrefixes = System.Web.Hosting.HostingEnvironment.ApplicationVirtualPath == null || System.Web.Hosting.HostingEnvironment.ApplicationVirtualPath == "/"
             ? TypeConstants.EmptyStringArray
@@ -468,12 +466,12 @@ namespace ServiceStack
         public static string GetPathInfo(string fullPath, string mode, string appPath)
         {
             var pathInfo = ResolvePathInfoFromMappedPath(fullPath, mode);
-            if (!IsNullOrEmpty(pathInfo)) 
+            if (!string.IsNullOrEmpty(pathInfo)) 
                 return pathInfo;
 
             //Wildcard mode relies on this to work out the handlerPath
             pathInfo = ResolvePathInfoFromMappedPath(fullPath, appPath);
-            if (!IsNullOrEmpty(pathInfo)) 
+            if (!string.IsNullOrEmpty(pathInfo)) 
                 return pathInfo;
 
             return fullPath;
@@ -608,13 +606,13 @@ namespace ServiceStack
         public static string GetQueryStringContentType(this IRequest httpReq)
         {
             var callback = httpReq.QueryString[Keywords.Callback];
-            if (!IsNullOrEmpty(callback)) return MimeTypes.Json;
+            if (!string.IsNullOrEmpty(callback)) return MimeTypes.Json;
 
             var format = httpReq.QueryString[Keywords.Format];
             if (format == null)
             {
                 // 3 or 4 letters in URI between slashes `/[xml|json|html|jsv|csv]/[reply|oneway]/[servicename]`
-                //see https://github.com/ServiceStack/ServiceStack/wiki/Formats#default-endpoint
+                //see http://docs.servicestack.net/formats#pre-defined-routes
                 const int formatMaxLength = 4;
                 const int formatMinLength = 3;
                 int start = 0, end = -1;
@@ -681,7 +679,7 @@ namespace ServiceStack
         public static string GetResponseContentType(this IRequest httpReq)
         {
             var specifiedContentType = GetQueryStringContentType(httpReq);
-            if (!IsNullOrEmpty(specifiedContentType)) return specifiedContentType;
+            if (!string.IsNullOrEmpty(specifiedContentType)) return specifiedContentType;
 
             var acceptContentTypes = httpReq.AcceptTypes;
             var defaultContentType = httpReq.ContentType;
@@ -694,7 +692,7 @@ namespace ServiceStack
             var preferredContentTypes = HostContext.Config.PreferredContentTypesArray;
 
             var acceptsAnything = false;
-            var hasDefaultContentType = !IsNullOrEmpty(defaultContentType);
+            var hasDefaultContentType = !string.IsNullOrEmpty(defaultContentType);
             if (acceptContentTypes != null)
             {
                 var hasPreferredContentTypes = new bool[preferredContentTypes.Length];
@@ -774,7 +772,24 @@ namespace ServiceStack
 
         public static string ResolveAbsoluteUrl(this IRequest httpReq, string virtualPath=null)
         {
-            return HostContext.ResolveAbsoluteUrl(virtualPath ?? "~".CombineWith(httpReq.RawUrl), httpReq);
+            return HostContext.ResolveAbsoluteUrl(virtualPath ?? "~" + httpReq.GetRawUrl(), httpReq);
+        }
+
+        public static string GetRawUrl(this IRequest httpReq)
+        {
+            var appPath = HostContext.Config.HandlerFactoryPath;
+#if !NETSTANDARD2_0
+            if (httpReq.OriginalRequest is HttpRequestBase aspReq && aspReq.ApplicationPath?.Length > 1)
+                appPath = aspReq.ApplicationPath.CombineWith(appPath);
+#endif
+            var pos = appPath != null
+                ? httpReq.RawUrl.IndexOf(appPath, StringComparison.OrdinalIgnoreCase)
+                : -1;
+            var rawUrl = pos >= 0
+                ? httpReq.RawUrl.Substring(pos + appPath.Length) 
+                : httpReq.RawUrl;
+
+            return rawUrl;
         }
 
         public static string GetAbsoluteUrl(this IRequest httpReq, string url)
@@ -788,7 +803,7 @@ namespace ServiceStack
 
         public static string InferBaseUrl(this string absoluteUri, string fromPathInfo = null)
         {
-            if (IsNullOrEmpty(fromPathInfo))
+            if (string.IsNullOrEmpty(fromPathInfo))
             {
                 fromPathInfo = "/" + (HostContext.Config.HandlerFactoryPath ?? "");
             }
@@ -799,7 +814,7 @@ namespace ServiceStack
                     return null;
             }
 
-            if (IsNullOrEmpty(absoluteUri))
+            if (string.IsNullOrEmpty(absoluteUri))
                 return null;
 
             var pos = absoluteUri.IndexOf(fromPathInfo, "https://".Length + 1, StringComparison.Ordinal);
@@ -938,7 +953,7 @@ namespace ServiceStack
             return false;
         }
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
         public static HttpContextBase ToHttpContextBase(this HttpRequestBase aspnetHttpReq)
         {
             return aspnetHttpReq.RequestContext.HttpContext;
@@ -1031,10 +1046,7 @@ namespace ServiceStack
 
         public static void SetAutoBatchCompletedHeader(this IRequest req, int completed)
         {
-            if (req == null || req.Response == null)
-                return;
-
-            req.Response.AddHeader(HttpHeaders.XAutoBatchCompleted, completed.ToString());
+            req?.Response?.AddHeader(HttpHeaders.XAutoBatchCompleted, completed.ToString());
         }
 
         public static void SetRoute(this IRequest req, RestPath route)
@@ -1044,14 +1056,57 @@ namespace ServiceStack
 
         public static RestPath GetRoute(this IRequest req)
         {
-            object route;
-            req.Items.TryGetValue(Keywords.Route, out route);
+            req.Items.TryGetValue(Keywords.Route, out var route);
             return route as RestPath;
         }
 
         public static bool IsHtml(this IRequest req)
         {
             return req.ResponseContentType.MatchesContentType(MimeTypes.Html);
+        }
+
+        public static string GetRequestValue(this IHttpRequest req, string name)
+        {
+            switch (name)
+            {
+                case nameof(req.PathInfo):
+                    return req.PathInfo;
+                case nameof(req.HttpMethod):
+                case nameof(req.Verb):
+                    return req.HttpMethod;
+                case nameof(req.ContentType):
+                    return req.ContentType;
+                case nameof(req.RawUrl):
+                    return req.RawUrl;
+                case nameof(req.AbsoluteUri):
+                    return req.AbsoluteUri;
+                case nameof(req.UserAgent):
+                    return req.UserAgent;
+                case nameof(req.Accept):
+                    return req.Accept;
+                case nameof(req.IsLocal):
+                    return req.IsLocal.ToString();
+                case nameof(req.IsSecureConnection):
+                    return req.IsSecureConnection.ToString();
+                case nameof(req.UserHostAddress):
+                    return req.UserHostAddress;
+                case nameof(req.RemoteIp):
+                    return req.RemoteIp;
+                case nameof(req.XRealIp):
+                    return req.XRealIp;
+                case nameof(req.XForwardedFor):
+                    return req.XForwardedFor;
+                case nameof(req.XForwardedPort):
+                    return req.XForwardedPort.ToString();
+                case nameof(req.XForwardedProtocol):
+                    return req.XForwardedProtocol;
+                case nameof(req.UrlReferrer):
+                    return req.UrlReferrer.ToString();
+                case nameof(req.ContentLength):
+                    return req.ContentLength.ToString();
+                default:
+                    throw new NotSupportedException($"Unknown IHttpRequest property '{name}'");
+            }
         }
     }
 }

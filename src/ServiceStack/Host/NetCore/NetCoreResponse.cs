@@ -1,4 +1,4 @@
-﻿#if NETSTANDARD1_6
+﻿#if NETSTANDARD2_0
 
 using System;
 using System.Collections.Generic;
@@ -13,6 +13,7 @@ using Microsoft.Extensions.Primitives;
 using ServiceStack.Logging;
 using System.Threading;
 using System.Threading.Tasks;
+using ServiceStack.Text;
 
 namespace ServiceStack.Host.NetCore
 {
@@ -39,8 +40,7 @@ namespace ServiceStack.Host.NetCore
         {
             try
             {
-                StringValues values;
-                if (response.Headers.TryGetValue(name, out values))
+                if (response.Headers.TryGetValue(name, out var values))
                 {
                     string[] existingValues = values.ToArray();
                     if (!existingValues.Contains(value))
@@ -78,28 +78,28 @@ namespace ServiceStack.Host.NetCore
             response.Redirect(url);
         }
 
-        public void Write(string text)
-        {
-            var bytes = text.ToUtf8Bytes();
-            if (bytes.Length > 0)
-                hasResponseBody = true;
-            
-            if (Platforms.PlatformNetCore.HostInstance.Config?.DisableChunkedEncoding == true)
-                 response.ContentLength = bytes.Length;
-
-            response.Body.Write(bytes, 0, bytes.Length);
-        }
-
         bool closed = false;
 
         public void Close()
         {
-            closed = true;
+            if (!closed)
+            {
+                closed = true;
+                try
+                {
+                    FlushBufferIfAny();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Error closing .NET Core OutputStream", ex);
+                }
+            }
         }
 
         public void End()
         {
             if (closed) return;
+
             if (!hasResponseBody && !response.HasStarted)
                 response.ContentLength = 0;
 
@@ -110,19 +110,37 @@ namespace ServiceStack.Host.NetCore
         public void Flush()
         {
             if (closed) return;
+
+            FlushBufferIfAny();
+
             response.Body.Flush();
         }
 
-        public Task FlushAsync(CancellationToken token = new CancellationToken())
+        public async Task FlushAsync(CancellationToken token = new CancellationToken())
         {
-            if (closed) return TypeConstants.EmptyTask;
-            return response.Body.FlushAsync(token);
+            if (BufferedStream != null)
+            {
+                var bytes = BufferedStream.ToArray();
+                try
+                {
+                    SetContentLength(bytes.Length); //safe to set Length in Buffered Response
+                }
+                catch { }
+
+                await response.Body.WriteAsync(bytes, token);
+                BufferedStream = MemoryStreamFactory.GetStream();
+            }
+
+            await response.Body.FlushAsync(token);
         }
 
         public void SetContentLength(long contentLength)
         {
-            if (contentLength >= 0)
+            if (!response.HasStarted && contentLength >= 0)
                 response.ContentLength = contentLength;
+            
+            if (contentLength > 0)
+                hasResponseBody = true;
         }
 
         public object OriginalResponse => response;
@@ -147,17 +165,40 @@ namespace ServiceStack.Host.NetCore
             set => response.ContentType = value;
         }
 
-        public Stream OutputStream => response.Body;
-
         public object Dto { get; set; }
-
-        public bool UseBufferedStream { get; set; }
 
         public bool IsClosed => closed; 
 
         public bool KeepAlive { get; set; }
 
+        public bool HasStarted => response.HasStarted;
+
         public Dictionary<string, object> Items { get; set; }
+
+        public MemoryStream BufferedStream { get; set; }
+        public Stream OutputStream => BufferedStream ?? response.Body;
+
+        public bool UseBufferedStream
+        {
+            get => BufferedStream != null;
+            set => BufferedStream = value
+                ? BufferedStream ?? new MemoryStream()
+                : null;
+        }
+
+        private void FlushBufferIfAny()
+        {
+            if (BufferedStream == null)
+                return;
+
+            var bytes = BufferedStream.ToArray();
+            try {
+                SetContentLength(bytes.Length); //safe to set Length in Buffered Response
+            } catch {}
+
+            response.Body.Write(bytes, 0, bytes.Length);
+            BufferedStream = MemoryStreamFactory.GetStream();
+        }
 
         public void SetCookie(Cookie cookie)
         {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ServiceStack.DataAnnotations;
 using ServiceStack.Text;
-#if NETSTANDARD1_3
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
@@ -280,8 +280,8 @@ namespace ServiceStack.Templates
 
         public static StringSegment ParseNextExpression(this StringSegment literal, out JsToken token)
         {
-            object value1, value2, value3;
-            JsBinding binding1, binding2, binding3;
+            object value1, value2;
+            JsBinding binding1, binding2;
 
             literal = literal.AdvancePastWhitespace();
             

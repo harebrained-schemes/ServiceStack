@@ -1,4 +1,4 @@
-﻿#if NETSTANDARD1_6
+﻿#if NETSTANDARD2_0
 
 using System;
 using System.Collections.Generic;
@@ -11,7 +11,6 @@ using ServiceStack.Logging;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
-using Microsoft.Extensions.Primitives;
 using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using ServiceStack.Configuration;
@@ -43,10 +42,8 @@ namespace ServiceStack.Host.NetCore
             this.RequestAttributes = attrs;
 
             //Kestrel does not decode '+' into space
-            this.PathInfo = this.OriginalPathInfo = (pathInfo ?? request.Path.Value).Replace("+", " ");  
-            this.PathInfo = HostContext.AppHost.ResolvePathInfo(this, PathInfo, out bool isDirectory);
-            this.IsDirectory = isDirectory;
-            this.IsFile = !isDirectory && HostContext.VirtualFileSources.FileExists(PathInfo);
+            this.PathInfo = this.OriginalPathInfo = (pathInfo ?? request.Path.Value).Replace("+", " ").Replace("%2f", "/");  
+            this.PathInfo = HostContext.AppHost.ResolvePathInfo(this, PathInfo);
         }
 
         public T TryResolve<T>()
@@ -134,7 +131,11 @@ namespace ServiceStack.Host.NetCore
                     // from Cookie.Name, but the Cookie constructor will throw for these names.
                     try
                     {
-                        cookie = new Cookie(httpCookie.Key, httpCookie.Value);
+                        var name = httpCookie.Key.StartsWith("$")
+                            ? httpCookie.Key.Substring(1)
+                            : httpCookie.Key;
+
+                        cookie = new Cookie(name, httpCookie.Value);
                     }
                     catch (Exception ex)
                     {
@@ -150,32 +151,14 @@ namespace ServiceStack.Host.NetCore
 
         public Dictionary<string, object> Items { get; }
 
-        private INameValueCollection headers;
-        public INameValueCollection Headers
-        {
-            get
-            {
-                if (headers != null)
-                    return headers;
+        private NameValueCollection headers;
+        public NameValueCollection Headers => headers ?? (headers = new NetCoreHeadersCollection(request.Headers));
 
-                return headers = new NetCoreHeadersCollection(request.Headers);
-            }
-        }
+        private NameValueCollection queryString;
+        public NameValueCollection QueryString => queryString ?? (queryString = new NetCoreQueryStringCollection(request.Query));
 
-        private INameValueCollection queryString;
-        public INameValueCollection QueryString
-        {
-            get
-            {
-                if (queryString != null)
-                    return queryString;
-
-                return queryString = new NetCoreQueryStringCollection(request.Query);
-            }
-        }
-
-        private INameValueCollection formData;
-        public INameValueCollection FormData
+        private NameValueCollection formData;
+        public NameValueCollection FormData
         {
             get
             {
@@ -190,7 +173,7 @@ namespace ServiceStack.Host.NetCore
                         nvc.Add(form.Key, form.Value);
                     }
                 }
-                return formData = new NameValueCollectionWrapper(nvc);
+                return formData = nvc;
             }
         }
 
@@ -208,7 +191,7 @@ namespace ServiceStack.Host.NetCore
 
         public string AbsoluteUri => request.GetDisplayUrl();
 
-        public string UserHostAddress => request.HttpContext.Connection.RemoteIpAddress.ToString();
+        public string UserHostAddress => request.HttpContext.Connection.RemoteIpAddress?.ToString();
 
         public string Authorization => request.Headers[HttpHeaders.Authorization];
 
@@ -229,23 +212,24 @@ namespace ServiceStack.Host.NetCore
         {
             get
             {
-                if (files != null)
+                if (files?.Length > 0 && files[0] != null) // During Debugging VS.NET initializes field to T[null]
                     return files;
 
                 if (!request.HasFormContentType)                    
                     return new IHttpFile[0];
 
-                files = new IHttpFile[request.Form.Files.Count];
-                for (var i=0; i< request.Form.Files.Count; i++)
+                var filesCount = request.Form.Files.Count;
+                files = new IHttpFile[filesCount];
+                for (var i=0; i<filesCount; i++)
                 {
-                    var file = request.Form.Files[i];
-                    var fileStream = file.OpenReadStream();
+                    var uploadedFile = request.Form.Files[i];
+                    var fileStream = uploadedFile.OpenReadStream();
                     files[i] = new HttpFile
                     {
-                        ContentLength = file.Length,
-                        ContentType = file.ContentType,
-                        FileName = file.FileName,
-                        Name = file.Name,
+                        ContentLength = uploadedFile.Length,
+                        ContentType = uploadedFile.ContentType,
+                        FileName = uploadedFile.FileName,
+                        Name = uploadedFile.Name,
                         InputStream = fileStream,
                     };
                     context.Response.RegisterForDispose(fileStream);
@@ -298,14 +282,43 @@ namespace ServiceStack.Host.NetCore
         private string remoteIp;
         public string RemoteIp => 
             remoteIp ?? (remoteIp = XForwardedFor ?? (XRealIp ?? UserHostAddress));
+
         
-        public IVirtualFile GetFile() => HostContext.VirtualFileSources.GetFile(PathInfo);
+        private IVirtualFile file;
+        public IVirtualFile GetFile() => file ?? (file = HostContext.VirtualFileSources.GetFile(PathInfo));
 
-        public IVirtualDirectory GetDirectory() => HostContext.VirtualFileSources.GetDirectory(PathInfo);
+        private IVirtualDirectory dir;
+        public IVirtualDirectory GetDirectory() => dir ?? (dir = HostContext.VirtualFileSources.GetDirectory(PathInfo));
 
-        public bool IsDirectory { get; }
+        private bool? isDirectory;
+        public bool IsDirectory
+        {
+            get
+            {
+                if (isDirectory == null)
+                {
+                    isDirectory = dir != null || HostContext.VirtualFileSources.DirectoryExists(PathInfo);
+                    if (isDirectory == true)
+                        isFile = false;
+                }
+                return isDirectory.Value;
+            }
+        }
 
-        public bool IsFile { get; }
+        private bool? isFile;
+        public bool IsFile
+        {
+            get
+            {
+                if (isFile == null)
+                {
+                    isFile = GetFile() != null;
+                    if (isFile == true)
+                        isDirectory = false;                    
+                }
+                return isFile.Value;
+            }
+        }
     }
 }
 

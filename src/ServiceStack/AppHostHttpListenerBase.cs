@@ -1,4 +1,4 @@
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
 
 using System;
 using System.Net;
@@ -54,11 +54,9 @@ namespace ServiceStack
 
             var handler = HttpHandlerFactory.GetHandler(httpReq);
 
-            var serviceStackHandler = handler as IServiceStackHandler;
-            if (serviceStackHandler != null)
+            if (handler is IServiceStackHandler serviceStackHandler)
             {
-                var restHandler = serviceStackHandler as RestHandler;
-                if (restHandler != null)
+                if (serviceStackHandler is RestHandler restHandler)
                 {
                     httpReq.OperationName = operationName = restHandler.RestPath.RequestType.GetOperationName();
                 }

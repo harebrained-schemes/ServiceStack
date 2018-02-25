@@ -112,8 +112,7 @@ namespace ServiceStack.Host.Handlers
                 var file = node as IVirtualFile;
                 if (file == null)
                 {
-                    var dir = node as IVirtualDirectory;
-                    if (dir != null)
+                    if (node is IVirtualDirectory dir)
                     {
                         file = dir.GetDefaultDocument(HostContext.AppHost.Config.DefaultDocuments);
                         if (file != null && HostContext.Config.RedirectToDefaultDocuments)
@@ -266,7 +265,7 @@ namespace ServiceStack.Host.Handlers
                         }
                     }
                 }
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
                 catch (System.Net.HttpListenerException ex)
                 {
                     if (ex.ErrorCode == 1229)

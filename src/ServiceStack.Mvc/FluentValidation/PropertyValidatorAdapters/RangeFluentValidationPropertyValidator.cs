@@ -1,4 +1,4 @@
-﻿#if !NETSTANDARD1_6
+﻿#if !NETSTANDARD2_0
 using ServiceStack.FluentValidation.Internal;
 using ServiceStack.FluentValidation.Resources;
 using ServiceStack.FluentValidation.Validators;
@@ -25,15 +25,6 @@ namespace FluentValidation.Mvc {
 				.AppendArgument("To", RangeValidator.To);
 
 			string message = RangeValidator.ErrorMessageSource.GetString(Metadata);
-
-			if (RangeValidator.ErrorMessageSource.ResourceType == typeof(Messages)) {
-				// If we're using the default resources then the mesage for length errors will have two parts, eg:
-				// '{PropertyName}' must be between {From} and {To}. You entered {Value}.
-				// We can't include the "Value" part of the message because this information isn't available at the time the message is constructed.
-				// Instead, we'll just strip this off by finding the index of the period that separates the two parts of the message.
-
-				message = message.Substring(0, message.IndexOf(".") + 1);
-			}
 
 			message = formatter.BuildMessage(message);
 

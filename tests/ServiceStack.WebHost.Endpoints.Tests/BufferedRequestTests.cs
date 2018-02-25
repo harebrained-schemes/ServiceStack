@@ -147,7 +147,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
     public class BufferedRequestAppHost : AppHostHttpListenerBase
     {
-        public BufferedRequestAppHost() : base(typeof(BufferedRequestTests).Name, typeof(MyService).GetAssembly()) { }
+        public BufferedRequestAppHost() : base(typeof(BufferedRequestTests).Name, typeof(MyService).Assembly) { }
 
         public string LastRequestBody { get; set; }
         public bool UseBufferredStream { get; set; }
@@ -155,6 +155,9 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
         public override void Configure(Container container)
         {
+#if !NETCORE
+            Plugins.Add(new SoapFormat());
+#endif
             PreRequestFilters.Add((httpReq, httpRes) => {
                 if (UseBufferredStream)
                     httpReq.UseBufferedStream = UseBufferredStream;

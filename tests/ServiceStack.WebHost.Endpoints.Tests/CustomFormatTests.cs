@@ -32,11 +32,10 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         public class AppHost : AppHostHttpListenerBase
         {
             public AppHost()
-                : base(typeof(CustomFormatTests).Name, typeof(CustomFormatTests).GetAssembly()) { }
+                : base(typeof(CustomFormatTests).Name, typeof(CustomFormatTests).Assembly) { }
 
             public override void Configure(Container container)
             {
-                ContentTypes.ClearCustomFilters();
                 SetConfig(new HostConfig
                 {
                     DefaultContentType = MimeTypes.Json,

@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using ServiceStack.Templates;
 using ServiceStack.Text;
 
-#if NETSTANDARD1_3
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
@@ -73,14 +73,8 @@ namespace ServiceStack
                 : SafeInputRegEx.Replace(text, "");
         }
 
-#if !(SL5 || NETSTANDARD1_1)
-        static readonly Regex StripHtmlUnicodeRegEx =
-            new Regex(@"&(#)?([xX])?([^ \f\n\r\t\v;]+);", RegexOptions.Compiled);
+        static readonly Regex StripHtmlUnicodeRegEx = new Regex(@"&(#)?([xX])?([^ \f\n\r\t\v;]+);", RegexOptions.Compiled);
         static readonly Regex SafeInputRegEx = new Regex(@"[^\w\s\.,@-\\+\\/]", RegexOptions.Compiled);
-#else
-        static readonly Regex StripHtmlUnicodeRegEx = new Regex(@"&(#)?([xX])?([^ \f\n\r\t\v;]+);");
-        static readonly Regex SafeInputWhitelist = new Regex(@"[^\w\s\.,@-\\+\\/]");
-#endif
 
         public static string HtmlEncode(this string html)
         {

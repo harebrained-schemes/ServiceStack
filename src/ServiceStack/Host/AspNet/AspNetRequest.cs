@@ -1,14 +1,14 @@
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
 
 //Copyright (c) ServiceStack, Inc. All Rights Reserved.
 //License: https://raw.github.com/ServiceStack/ServiceStack/master/license.txt
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.IO;
 using System.Net;
 using System.Web;
-using Funq;
 using ServiceStack.Configuration;
 using ServiceStack.IO;
 using ServiceStack.Logging;
@@ -21,9 +21,6 @@ namespace ServiceStack.Host.AspNet
         : IHttpRequest, IHasResolver, IHasVirtualFiles
     {
         public static ILog log = LogManager.GetLogger(typeof(AspNetRequest));
-
-        [Obsolete("Use Resolver")]
-        public Container Container => throw new NotSupportedException("Use Resolver");
 
         private IResolver resolver;
         public IResolver Resolver
@@ -38,7 +35,7 @@ namespace ServiceStack.Host.AspNet
         public AspNetRequest(HttpContextBase httpContext, string operationName = null)
             : this(httpContext, operationName, RequestAttributes.None)
         {
-            this.RequestAttributes = this.GetAttributes();
+            this.RequestAttributes = this.GetAttributes() | RequestAttributes.Http;
         }
 
         public AspNetRequest(HttpContextBase httpContext, string operationName, RequestAttributes requestAttributes)
@@ -57,7 +54,7 @@ namespace ServiceStack.Host.AspNet
 
             this.RequestPreferences = new RequestPreferences(httpContext);
 
-            if (httpContext.Items != null && httpContext.Items.Count > 0)
+            if (httpContext.Items.Count > 0)
             {
                 foreach (var key in httpContext.Items.Keys)
                 {
@@ -68,9 +65,7 @@ namespace ServiceStack.Host.AspNet
             }
 
             this.PathInfo = this.OriginalPathInfo = GetPathInfo();
-            this.PathInfo = HostContext.AppHost.ResolvePathInfo(this, OriginalPathInfo, out bool isDirectory);
-            this.IsDirectory = isDirectory;
-            this.IsFile = !isDirectory && HostContext.VirtualFileSources.FileExists(PathInfo);
+            this.PathInfo = HostContext.AppHost.ResolvePathInfo(this, OriginalPathInfo);
         }
 
         public HttpRequestBase HttpRequest => request;
@@ -167,7 +162,11 @@ namespace ServiceStack.Host.AspNet
                         // from Cookie.Name, but the Cookie constructor will throw for these names.
                         try
                         {
-                            cookie = new Cookie(httpCookie.Name, httpCookie.Value, httpCookie.Path, httpCookie.Domain)
+                            var name = httpCookie.Name.StartsWith("$")
+                                ? httpCookie.Name.Substring(1)
+                                : httpCookie.Name;
+
+                            cookie = new Cookie(name, httpCookie.Value, httpCookie.Path, httpCookie.Domain)
                             {
                                 HttpOnly = httpCookie.HttpOnly,
                                 Secure = httpCookie.Secure,
@@ -187,14 +186,14 @@ namespace ServiceStack.Host.AspNet
             }
         }
 
-        private NameValueCollectionWrapper headers;
-        public INameValueCollection Headers => headers ?? (headers = new NameValueCollectionWrapper(request.Headers));
+        private NameValueCollection headers;
+        public NameValueCollection Headers => headers ?? (headers = request.Headers);
 
-        private NameValueCollectionWrapper queryString;
-        public INameValueCollection QueryString => queryString ?? (queryString = new NameValueCollectionWrapper(request.QueryString));
+        private NameValueCollection queryString;
+        public NameValueCollection QueryString => queryString ?? (queryString = request.QueryString);
 
-        private NameValueCollectionWrapper formData;
-        public INameValueCollection FormData => formData ?? (formData = new NameValueCollectionWrapper(request.Form));
+        private NameValueCollection formData;
+        public NameValueCollection FormData => formData ?? (formData = request.Form);
 
         public string GetRawBody()
         {
@@ -336,13 +335,41 @@ namespace ServiceStack.Host.AspNet
         public Uri UrlReferrer => request.UrlReferrer;
         
         
-        public IVirtualFile GetFile() => HostContext.VirtualFileSources.GetFile(PathInfo);
+        private IVirtualFile file;
+        public IVirtualFile GetFile() => file ?? (file = HostContext.VirtualFileSources.GetFile(PathInfo));
 
-        public IVirtualDirectory GetDirectory() => HostContext.VirtualFileSources.GetDirectory(PathInfo);
+        private IVirtualDirectory dir;
+        public IVirtualDirectory GetDirectory() => dir ?? (dir = HostContext.VirtualFileSources.GetDirectory(PathInfo));
 
-        public bool IsDirectory { get; }
+        private bool? isDirectory;
+        public bool IsDirectory
+        {
+            get
+            {
+                if (isDirectory == null)
+                {
+                    isDirectory = dir != null || HostContext.VirtualFileSources.DirectoryExists(PathInfo);
+                    if (isDirectory == true)
+                        isFile = false;
+                }
+                return isDirectory.Value;
+            }
+        }
 
-        public bool IsFile { get; }
+        private bool? isFile;
+        public bool IsFile
+        {
+            get
+            {
+                if (isFile == null)
+                {
+                    isFile = GetFile() != null;
+                    if (isFile == true)
+                        isDirectory = false;                    
+                }
+                return isFile.Value;
+            }
+        }
     }
 
 }

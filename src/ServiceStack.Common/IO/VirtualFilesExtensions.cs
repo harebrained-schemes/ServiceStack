@@ -20,16 +20,9 @@ namespace ServiceStack.IO
             return pathProvider.DirectoryExists(filePath);
         }
 
-        [Obsolete("Renamed to WriteFile")]
-        public static void AddFile(this IVirtualPathProvider pathProvider, string filePath, string textContents)
-        {
-            pathProvider.WriteFile(filePath, textContents);
-        }
-
         public static void WriteFile(this IVirtualPathProvider pathProvider, string filePath, string textContents)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.WriteFile(filePath, textContents);
@@ -37,8 +30,7 @@ namespace ServiceStack.IO
 
         public static void WriteFile(this IVirtualPathProvider pathProvider, string filePath, Stream stream)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.WriteFile(filePath, stream);
@@ -46,8 +38,7 @@ namespace ServiceStack.IO
 
         public static void WriteFile(this IVirtualPathProvider pathProvider, string filePath, byte[] bytes)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             using (var ms = MemoryStreamFactory.GetStream(bytes))
@@ -58,8 +49,7 @@ namespace ServiceStack.IO
 
         public static void AppendFile(this IVirtualPathProvider pathProvider, string filePath, string textContents)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.AppendFile(filePath, textContents);
@@ -67,8 +57,7 @@ namespace ServiceStack.IO
 
         public static void AppendFile(this IVirtualPathProvider pathProvider, string filePath, Stream stream)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.AppendFile(filePath, stream);
@@ -76,8 +65,7 @@ namespace ServiceStack.IO
 
         public static void AppendFile(this IVirtualPathProvider pathProvider, string filePath, byte[] bytes)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             using (var ms = MemoryStreamFactory.GetStream(bytes))
@@ -88,8 +76,7 @@ namespace ServiceStack.IO
 
         public static void WriteFile(this IVirtualPathProvider pathProvider, IVirtualFile file, string filePath = null)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             using (var stream = file.OpenRead())
@@ -100,8 +87,7 @@ namespace ServiceStack.IO
 
         public static void DeleteFile(this IVirtualPathProvider pathProvider, string filePath)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.DeleteFile(filePath);
@@ -114,8 +100,7 @@ namespace ServiceStack.IO
 
         public static void DeleteFiles(this IVirtualPathProvider pathProvider, IEnumerable<string> filePaths)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.DeleteFiles(filePaths);
@@ -123,8 +108,7 @@ namespace ServiceStack.IO
 
         public static void DeleteFiles(this IVirtualPathProvider pathProvider, IEnumerable<IVirtualFile> files)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.DeleteFiles(files.Map(x => x.VirtualPath));
@@ -132,8 +116,7 @@ namespace ServiceStack.IO
 
         public static void DeleteFolder(this IVirtualPathProvider pathProvider, string dirPath)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.DeleteFolder(dirPath);
@@ -141,8 +124,7 @@ namespace ServiceStack.IO
 
         public static void WriteFiles(this IVirtualPathProvider pathProvider, IEnumerable<IVirtualFile> srcFiles, Func<IVirtualFile, string> toPath = null)
         {
-            var writableFs = pathProvider as IVirtualFiles;
-            if (writableFs == null)
+            if (!(pathProvider is IVirtualFiles writableFs))
                 throw new InvalidOperationException(ErrorNotWritable.Fmt(pathProvider.GetType().Name));
 
             writableFs.WriteFiles(srcFiles, toPath);

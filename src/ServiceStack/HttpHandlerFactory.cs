@@ -16,13 +16,11 @@ namespace ServiceStack
         public static string WebHostPhysicalPath;
         public static string DefaultRootFileName;
 
-        //internal static string ApplicationBaseUrl = null;
         private static IHttpHandler DefaultHttpHandler;
         private static RedirectHttpHandler NonRootModeDefaultHttpHandler;
         private static IHttpHandler ForbiddenHttpHandler;
         private static IHttpHandler NotFoundHttpHandler;
         private static readonly IHttpHandler StaticFilesHandler = new StaticFileHandler();
-        private static bool IsIntegratedPipeline;
 
         [ThreadStatic]
         public static string DebugLastHandlerArgs;
@@ -31,12 +29,13 @@ namespace ServiceStack
         {
             try
             {
-#if !NETSTANDARD1_6
+                var isIntegratedPipeline = false;
+#if !NETSTANDARD2_0
                 //MONO doesn't implement this property
                 var pi = typeof(HttpRuntime).GetProperty("UsingIntegratedPipeline");
                 if (pi != null)
                 {
-                    IsIntegratedPipeline = (bool) pi.GetGetMethod().Invoke(null, TypeConstants.EmptyObjectArray);
+                    isIntegratedPipeline = (bool) pi.GetGetMethod().Invoke(null, TypeConstants.EmptyObjectArray);
                 }
 #endif
                 var appHost = HostContext.AppHost;
@@ -49,7 +48,7 @@ namespace ServiceStack
                 var hostedAtRootPath = config.HandlerFactoryPath == null;
 
                 //DefaultHttpHandler not supported in IntegratedPipeline mode
-                if (!IsIntegratedPipeline && isAspNetHost && !hostedAtRootPath && !Env.IsMono)
+                if (!isIntegratedPipeline && isAspNetHost && !hostedAtRootPath && !Env.IsMono)
                     DefaultHttpHandler = new DefaultHttpHandler();
 
                 var rootFiles = appHost.VirtualFileSources.GetRootFiles().ToList();
@@ -85,8 +84,7 @@ namespace ServiceStack
                 if (DefaultHttpHandler == null)
                     DefaultHttpHandler = NotFoundHttpHandler;
 
-                var defaultRedirectHanlder = DefaultHttpHandler as RedirectHttpHandler;
-                var debugDefaultHandler = defaultRedirectHanlder != null
+                var debugDefaultHandler = DefaultHttpHandler is RedirectHttpHandler defaultRedirectHanlder
                     ? defaultRedirectHanlder.RelativeUrl
                     : typeof(DefaultHttpHandler).GetOperationName();
 
@@ -95,7 +93,6 @@ namespace ServiceStack
                 {
                     ForbiddenHttpHandler = new ForbiddenHttpHandler
                     {
-                        IsIntegratedPipeline = IsIntegratedPipeline,
                         WebHostPhysicalPath = WebHostPhysicalPath,
                         WebHostUrl = config.WebHostUrl,
                         DefaultRootFileName = DefaultRootFileName,
@@ -108,7 +105,6 @@ namespace ServiceStack
                 {
                     NotFoundHttpHandler = new NotFoundHttpHandler
                     {
-                        IsIntegratedPipeline = IsIntegratedPipeline,
                         WebHostPhysicalPath = WebHostPhysicalPath,
                         WebHostUrl = config.WebHostUrl,
                         DefaultRootFileName = DefaultRootFileName,
@@ -122,16 +118,16 @@ namespace ServiceStack
             }
         }
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
         // Entry point for ASP.NET
         public IHttpHandler GetHandler(HttpContext ctx, string requestType, string url, string pathTranslated)
         {
             var appHost = HostContext.AppHost;
 
             DebugLastHandlerArgs = requestType + "|" + url + "|" + pathTranslated;
-            var httpReq = new ServiceStack.Host.AspNet.AspNetRequest(ctx.Request.RequestContext.HttpContext, url.SanitizedVirtualPath());
+            var httpReq = new Host.AspNet.AspNetRequest(ctx.Request.RequestContext.HttpContext, url.SanitizedVirtualPath());
 
-            foreach (var rawHttpHandler in appHost.RawHttpHandlers)
+            foreach (var rawHttpHandler in appHost.RawHttpHandlersArray)
             {
                 var handler = rawHttpHandler(httpReq);
                 if (handler != null) 
@@ -149,20 +145,15 @@ namespace ServiceStack
             if (string.IsNullOrEmpty(pathInfo) || pathInfo == "/")
             {
                 //If the fallback route can handle it, let it
-                if (appHost.Config.FallbackRestPath != null)
+                var restPath = appHost.Config.FallbackRestPath?.Invoke(httpReq);
+                if (restPath != null)
                 {
-                    string contentType;
-                    var sanitizedPath = RestHandler.GetSanitizedPathInfo(pathInfo, out contentType);
-
-                    var restPath = appHost.Config.FallbackRestPath(ctx.Request.HttpMethod, sanitizedPath, pathTranslated);
-                    if (restPath != null)
-                    {
-                        return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
-                    }
+                    var sanitizedPath = RestHandler.GetSanitizedPathInfo(pathInfo, out var contentType);
+                    return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
                 }
 
                 //e.g. CatchAllHandler to Process Markdown files
-                var catchAllHandler = GetCatchAllHandlerIfAny(httpReq.HttpMethod, pathInfo, httpReq.GetPhysicalPath());
+                var catchAllHandler = GetCatchAllHandlerIfAny(appHost, httpReq.HttpMethod, pathInfo, httpReq.GetPhysicalPath());
                 if (catchAllHandler != null) return catchAllHandler;
 
                 if (mode == null)
@@ -174,26 +165,17 @@ namespace ServiceStack
                 return NonRootModeDefaultHttpHandler;
             }
 
-            if (mode != null && pathInfo.EndsWith("/" + mode))
-            {
-                return ReturnDefaultHandler(httpReq);
-            }
-
             return GetHandlerForPathInfo(httpReq, pathTranslated)
                ?? NotFoundHttpHandler;
         }
 #endif
-        public static string GetBaseUrl()
-        {
-            return HostContext.Config.WebHostUrl;
-        }
 
         // Entry point for HttpListener and .NET Core
         public static IHttpHandler GetHandler(IHttpRequest httpReq)
         {
             var appHost = HostContext.AppHost;
 
-            foreach (var rawHttpHandler in appHost.RawHttpHandlers)
+            foreach (var rawHttpHandler in appHost.RawHttpHandlersArray)
             {
                 var handler = rawHttpHandler(httpReq);
                 if (handler != null) 
@@ -207,20 +189,15 @@ namespace ServiceStack
             if (string.IsNullOrEmpty(pathInfo) || pathInfo == "/")
             {
                 //If the fallback route can handle it, let it
-                if (appHost.Config.FallbackRestPath != null)
+                RestPath restPath = appHost.Config.FallbackRestPath?.Invoke(httpReq);
+                if (restPath != null)
                 {
-                    string contentType;
-                    var sanitizedPath = RestHandler.GetSanitizedPathInfo(pathInfo, out contentType);
-
-                    var restPath = appHost.Config.FallbackRestPath(httpReq.HttpMethod, sanitizedPath, httpReq.GetPhysicalPath());
-                    if (restPath != null)
-                    {
-                        return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
-                    }
+                    var sanitizedPath = RestHandler.GetSanitizedPathInfo(pathInfo, out var contentType);
+                    return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
                 }
 
                 //e.g. CatchAllHandler to Process Markdown files
-                var catchAllHandler = GetCatchAllHandlerIfAny(httpReq.HttpMethod, pathInfo, httpReq.GetPhysicalPath());
+                var catchAllHandler = GetCatchAllHandlerIfAny(appHost, httpReq.HttpMethod, pathInfo, httpReq.GetPhysicalPath());
                 if (catchAllHandler != null) return catchAllHandler;
 
                 if (mode == null)
@@ -232,26 +209,8 @@ namespace ServiceStack
                 return NonRootModeDefaultHttpHandler;
             }
 
-            if (mode != null && pathInfo.EndsWith("/" + mode))
-                return ReturnDefaultHandler(httpReq);
-
             return GetHandlerForPathInfo(httpReq, httpReq.GetPhysicalPath())
                    ?? NotFoundHttpHandler;
-        }
-
-        private static IHttpHandler ReturnDefaultHandler(IHttpRequest httpReq)
-        {
-            var pathProvider = HostContext.VirtualFileSources;
-
-            var defaultDoc = pathProvider.GetFile(DefaultRootFileName ?? "");
-            if (httpReq.GetPhysicalPath() != WebHostPhysicalPath
-                || defaultDoc == null)
-            {
-                return new IndexPageHttpHandler();
-            }
-
-            var okToServe = ShouldAllow(httpReq.PathInfo);
-            return okToServe ? DefaultHttpHandler : ForbiddenHttpHandler;
         }
 
         // no handler registered 
@@ -285,36 +244,35 @@ namespace ServiceStack
             return false;
         }
 
-        public static IHttpHandler GetHandlerForPathInfo(IRequest httpReq, string filePath)
+        public static IHttpHandler GetHandlerForPathInfo(IHttpRequest httpReq, string filePath)
         {
             var appHost = HostContext.AppHost;
 
             var pathInfo = httpReq.PathInfo;
+            var httpMethod = httpReq.Verb;
+            
+            var pathParts = pathInfo.TrimStart('/').Split('/');
+            if (pathParts.Length == 0) return NotFoundHttpHandler;
+
+            var restPath = RestHandler.FindMatchingRestPath(httpReq, out var contentType);
+            if (restPath != null)
+                return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
+
+            var catchAllHandler = GetCatchAllHandlerIfAny(appHost, httpMethod, pathInfo, filePath);
+            if (catchAllHandler != null)
+                return catchAllHandler;
+
             var isFile = httpReq.IsFile();
             var isDirectory = httpReq.IsDirectory();
 
             if (!isFile && !isDirectory && Env.IsMono)
                 isDirectory = StaticFileHandler.MonoDirectoryExists(filePath, filePath.Substring(0, filePath.Length - pathInfo.Length));
 
-            var httpMethod = httpReq.Verb;
-            
-            var pathParts = pathInfo.TrimStart('/').Split('/');
-            if (pathParts.Length == 0) return NotFoundHttpHandler;
-
-            string contentType;
-            var restPath = RestHandler.FindMatchingRestPath(httpMethod, pathInfo, out contentType);
-            if (restPath != null)
-                return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
-
             if (isFile || isDirectory)
             {
                 //If pathInfo is for Directory try again with redirect including '/' suffix
                 if (appHost.Config.RedirectDirectoriesToTrailingSlashes && isDirectory && !httpReq.OriginalPathInfo.EndsWith("/"))
                     return new RedirectHttpHandler { RelativeUrl = pathInfo + "/" };
-
-                var catchAllHandler = GetCatchAllHandlerIfAny(httpMethod, pathInfo, filePath);
-                if (catchAllHandler != null) 
-                    return catchAllHandler;
 
                 if (isDirectory)
                     return StaticFilesHandler;
@@ -324,12 +282,9 @@ namespace ServiceStack
                     : ForbiddenHttpHandler;
             }
 
-            var handler = GetCatchAllHandlerIfAny(httpMethod, pathInfo, filePath);
-            if (handler != null) return handler;
-
             if (appHost.Config.FallbackRestPath != null)
             {
-                restPath = appHost.Config.FallbackRestPath(httpMethod, pathInfo, filePath);
+                restPath = appHost.Config.FallbackRestPath(httpReq);
                 if (restPath != null)
                     return new RestHandler { RestPath = restPath, RequestName = restPath.RequestType.GetOperationName(), ResponseContentType = contentType };
             }
@@ -337,9 +292,9 @@ namespace ServiceStack
             return null;
         }
 
-        private static IHttpHandler GetCatchAllHandlerIfAny(string httpMethod, string pathInfo, string filePath)
+        private static IHttpHandler GetCatchAllHandlerIfAny(ServiceStackHost appHost, string httpMethod, string pathInfo, string filePath)
         {
-            foreach (var httpHandlerResolver in HostContext.CatchAllHandlers)
+            foreach (var httpHandlerResolver in appHost.CatchAllHandlersArray)
             {
                 var httpHandler = httpHandlerResolver(httpMethod, pathInfo, filePath);
                 if (httpHandler != null)

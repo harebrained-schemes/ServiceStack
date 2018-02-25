@@ -3,6 +3,10 @@
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <AssemblyName>ServiceStack.Common</AssemblyName>
     <PackageId>ServiceStack.Common</PackageId>
+    <TargetFrameworks>net45;netstandard2.0</TargetFrameworks>
+    <AssemblyName>ServiceStack.Common</AssemblyName>
+    <PackageId>ServiceStack.Common</PackageId>
+    <RootNamespace>ServiceStack</RootNamespace>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
     <GenerateAssemblyDescriptionAttribute>false</GenerateAssemblyDescriptionAttribute>
     <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
@@ -28,6 +32,22 @@
   </PropertyGroup>
   <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
     <PackageReference Include="Microsoft.NETCore.Portable.Compatibility" Version="1.0.1" />
+  <ItemGroup>
+    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
+  </ItemGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net45' ">
+    <DefineConstants>$(DefineConstants);NET45</DefineConstants>
+    <SignAssembly>True</SignAssembly>
+    <DelaySign>False</DelaySign>
+    <AssemblyOriginatorKeyFile>../servicestack.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
+    <Reference Include="..\..\lib\net45\ServiceStack.Text.dll" />
+  </ItemGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+    <DefineConstants>$(DefineConstants);NETSTANDARD2_0</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
     <PackageReference Include="Microsoft.Extensions.Primitives" Version="2.0.0" />
     <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" />
     <PackageReference Include="System.Net.Requests" Version="4.3.0" />
@@ -38,6 +58,7 @@
     <PackageReference Include="System.Reflection.TypeExtensions" Version="4.3.0" />
     <ProjectReference Include="..\..\..\ServiceStack.Text\src\ServiceStack.Text\ServiceStack.Text.csproj" />
     <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Text.dll" />
   </ItemGroup>
 
   <PropertyGroup>

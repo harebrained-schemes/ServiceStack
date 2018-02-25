@@ -52,15 +52,15 @@ namespace ServiceStack.ServiceHost.Tests.Formats
         {
             var httpReq = new MockHttpRequest
             {
-                Headers = PclExportClient.Instance.NewNameValueCollection(),
+                Headers = new NameValueCollection(),
                 OperationName = "OperationName",
-                QueryString = PclExportClient.Instance.NewNameValueCollection(),
+                QueryString = new NameValueCollection(),
             };
             httpReq.QueryString.Add("format", format);
             using (var ms = new MemoryStream())
             {
                 var httpRes = new HttpResponseStreamWrapper(ms, httpReq);
-                appHost.ViewEngines[0].ProcessRequest(httpReq, httpRes, dto);
+                appHost.ViewEngines[0].ProcessRequestAsync(httpReq, dto, httpRes.OutputStream);
 
                 var utf8Bytes = ms.ToArray();
                 var html = utf8Bytes.FromUtf8Bytes();
@@ -186,15 +186,9 @@ namespace ServiceStack.ServiceHost.Tests.Formats
                 this.Headers[HttpHeaders.Location] = url;
             }
 
-            public Stream OutputStream { get { return MemoryStream; } }
+            public Stream OutputStream => MemoryStream;
 
             public object Dto { get; set; }
-
-            public void Write(string text)
-            {
-                var bytes = Encoding.UTF8.GetBytes(text);
-                MemoryStream.Write(bytes, 0, bytes.Length);
-            }
 
             public bool UseBufferedStream { get; set; }
 
@@ -228,6 +222,8 @@ namespace ServiceStack.ServiceHost.Tests.Formats
 
             public bool KeepAlive { get; set; }
 
+            public bool HasStarted { get; set; }
+
             public Dictionary<string, object> Items { get; private set; }
 
             public void SetCookie(Cookie cookie)
@@ -246,7 +242,7 @@ namespace ServiceStack.ServiceHost.Tests.Formats
             {
                 MarkdownFormat = markdownFormat,
             };
-            var httpReq = new MockHttpRequest { QueryString = PclExportClient.Instance.NewNameValueCollection() };
+            var httpReq = new MockHttpRequest { QueryString = new NameValueCollection() };
             var httpRes = new MockHttpResponse(httpReq);
             markdownHandler.ProcessRequestAsync(httpReq, httpRes, "Static").Wait();
 

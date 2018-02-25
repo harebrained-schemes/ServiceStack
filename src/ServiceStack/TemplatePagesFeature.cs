@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Web;
 using System.Threading.Tasks;
 using ServiceStack.Auth;
@@ -12,6 +11,7 @@ using ServiceStack.Caching;
 using ServiceStack.Configuration;
 using ServiceStack.DataAnnotations;
 using ServiceStack.Host.Handlers;
+using ServiceStack.Html;
 using ServiceStack.IO;
 using ServiceStack.Messaging;
 using ServiceStack.Redis;
@@ -21,9 +21,9 @@ using ServiceStack.Web;
 
 namespace ServiceStack
 {
-    public class TemplatePagesFeature : TemplateContext, IPlugin
+    public class TemplatePagesFeature : TemplateContext, IPlugin, IViewEngine
     {
-        public bool DisableHotReload { get; set; }
+        public bool? EnableHotReload { get; set; }
 
         public bool EnableDebugTemplate { get; set; }
         public bool EnableDebugTemplateToAll { get; set; }
@@ -74,9 +74,19 @@ namespace ServiceStack
             appHost.Register(Pages);
             appHost.Register(this);
             appHost.CatchAllHandlers.Add(RequestHandler);
+            
+            InitViewPages(appHost);
 
-            if (!DisableHotReload)
+            if (EnableHotReload.GetValueOrDefault(DebugMode))
+            {
                 appHost.RegisterService(typeof(TemplateHotReloadService));
+
+                // Also enable hot-fileloader.js for hot reloading when static files changed in /wwwroot
+                if (!appHost.Plugins.Any(x => x is HotReloadFeature)) 
+                {
+                    appHost.RegisterService(typeof(HotReloadFilesService));
+                }
+            }
             
             if (!string.IsNullOrEmpty(ApiPath))
                 appHost.RegisterService(typeof(TemplateApiPagesService), 
@@ -117,6 +127,11 @@ namespace ServiceStack
             {
                 if (page.File.Name.StartsWith("_"))
                     return new ForbiddenHttpHandler();
+
+                //If it's a dir index page and doesn't have a trailing '/' let it pass through to RedirectDirectoriesToTrailingSlashes
+                if (pathInfo[pathInfo.Length - 1] != '/' && pathInfo.Substring(1) == page.File.Directory?.VirtualPath)
+                    return null;
+
                 return new TemplatePageHandler(page);
             }
 
@@ -129,10 +144,130 @@ namespace ServiceStack
             
             return null;
         }
+
+        private readonly ConcurrentDictionary<string, TemplatePage> viewPagesMap = new ConcurrentDictionary<string, TemplatePage>();
+
+        private void InitViewPages(IAppHost appHost)
+        {
+            var viewsDir = VirtualFiles.GetDirectory("Views");
+            if (viewsDir == null)
+                return;
+
+            var htmlFormat = PageFormats.First(x => x is HtmlPageFormat);
+
+            var files = viewsDir.GetAllMatchingFiles("*." + htmlFormat.Extension);
+            foreach (var file in files)
+            {
+                if (file.Name.StartsWith("_")) // _layout.html or _partial.html which can have duplicate names
+                    continue;
+                
+                var viewName = file.Name.WithoutExtension();
+                if (viewPagesMap.TryGetValue(viewName, out var existingFile))
+                    throw new NotSupportedException($"Multiple views found named '{file.Name}' in '{file.VirtualPath}' and '{existingFile.VirtualPath}'");
+
+                viewPagesMap[viewName] = new TemplatePage(this, file, htmlFormat);
+            }
+
+            if (viewPagesMap.Count > 0)
+            {
+                appHost.ViewEngines.Add(this);
+            }
+        }
+
+        public TemplatePage GetViewPage(string viewName)
+        {
+            return viewPagesMap.TryGetValue(viewName, out var view) ? view : null;
+        }
+
+        public bool HasView(string viewName, IRequest httpReq = null)
+        {
+            return GetCodePage("Views/" + viewName) != null || GetViewPage(viewName) != null;
+        }
+
+        public string RenderPartial(string pageName, object model, bool renderHtml, StreamWriter writer = null, IHtmlContext htmlHelper = null)
+        {
+            var codePage = htmlHelper?.HttpRequest != null 
+                ? htmlHelper.HttpRequest.GetCodePage("Views/" + pageName) 
+                : GetCodePage("Views/" + pageName);
+
+            var viewPage = codePage == null ? GetViewPage(pageName) : null;
+
+            if (codePage == null && viewPage == null)
+                return null;
+            
+            var output = codePage != null 
+                ? new PageResult(codePage) { Model = model }.Result
+                : new PageResult(viewPage) { Model = model }.Result;
+
+            if (writer != null)
+            {
+                writer.Write(output);
+                writer.Flush();
+                return null;
+            }
+
+            return output;
+        }
+
+        public async Task<bool> ProcessRequestAsync(IRequest req, object dto, Stream outputStream)
+        {
+            if (dto is IHttpResult httpResult)
+                dto = httpResult.Response;
+            
+            var viewNames = new List<string>
+            {
+                req.OperationName,
+                dto.GetType().Name,
+            };
+            
+            if (req.GetItem(Keywords.View) is string viewName)
+                viewNames.Insert(0, viewName);
+
+            TemplateCodePage codePage = null;
+            TemplatePage viewPage = null;
+
+            foreach (var name in viewNames)
+            {
+                codePage = req.GetCodePage("Views/" + name);
+                if (codePage != null)
+                    break;
+            }
+
+            if (codePage == null)
+            {
+                foreach (var name in viewNames)
+                {
+                    viewPage = GetViewPage(name);
+                    if (viewPage != null)
+                        break;
+                }
+            }
+
+            if (codePage == null && viewPage == null)
+                return false;
+
+            if (codePage != null)
+                codePage.Init();
+            else
+                await viewPage.Init();
+
+            var layoutName = req.GetItem(Keywords.Template) as string;
+            var layoutPage = codePage != null 
+                ? Pages.ResolveLayoutPage(codePage, layoutName)
+                : Pages.ResolveLayoutPage(viewPage, layoutName);
+            
+            var handler = codePage != null
+                ? (HttpAsyncTaskHandler)new TemplateCodePageHandler(codePage, layoutPage) { OutputStream = outputStream, Model = dto }
+                : new TemplatePageHandler(viewPage, layoutPage) { OutputStream = outputStream, Model = dto };
+
+            await handler.ProcessRequestAsync(req, req.Response, req.OperationName);
+
+            return true;
+        }
     }
 
     [ExcludeMetadata]
-    [Route("/templates/hotreload/page")]
+    [Route("/hotreload/templates")]
     public class HotReloadPage : IReturn<HotReloadPageResponse>
     {
         public string Path { get; set; }
@@ -150,13 +285,13 @@ namespace ServiceStack
     [Restrict(VisibilityTo = RequestAttributes.None)]
     public class TemplateHotReloadService : Service
     {
+        public static TimeSpan LongPollDuration = TimeSpan.FromSeconds(60);
+        public static TimeSpan CheckDelay = TimeSpan.FromMilliseconds(50);
+
         public ITemplatePages Pages { get; set; }
 
         public async Task<HotReloadPageResponse> Any(HotReloadPage request)
         {
-            if (!HostContext.DebugMode)
-                throw new NotImplementedException("set 'debug true' in web.settings to enable this service");
-
             var page = Pages.GetPage(request.Path ?? "/");
             if (page == null)
                 throw HttpError.NotFound("Page not found: " + request.Path);
@@ -164,13 +299,26 @@ namespace ServiceStack
             if (!page.HasInit)
                 await page.Init();
 
-            var lastModified = Pages.GetLastModified(page);
+            var startedAt = DateTime.UtcNow;
+            var eTagTicks = string.IsNullOrEmpty(request.ETag) ? (long?) null : long.Parse(request.ETag);
+            var maxLastModified = DateTime.MinValue;
+            var shouldReload = false;
 
-            if (string.IsNullOrEmpty(request.ETag))
-                return new HotReloadPageResponse { ETag = lastModified.Ticks.ToString() };
+            while (DateTime.UtcNow - startedAt < LongPollDuration)
+            {
+                maxLastModified = Pages.GetLastModified(page);
 
-            var shouldReload = lastModified.Ticks > long.Parse(request.ETag);
-            return new HotReloadPageResponse { Reload = shouldReload, ETag = lastModified.Ticks.ToString() };
+                if (eTagTicks == null)
+                    return new HotReloadPageResponse { ETag = maxLastModified.Ticks.ToString() };
+
+                shouldReload = maxLastModified.Ticks > eTagTicks;
+                if (shouldReload)
+                    break;
+
+                await Task.Delay(CheckDelay);
+            }
+
+            return new HotReloadPageResponse { Reload = shouldReload, ETag = maxLastModified.Ticks.ToString() };
         }
     }
 
@@ -366,6 +514,8 @@ Plugins: {{ plugins | select: \n  - { it | typeName } }}
     {
         private readonly TemplatePage page;
         private readonly TemplatePage layoutPage;
+        public object Model { get; set; }
+        public Stream OutputStream { get; set; }
 
         public TemplatePageHandler(TemplatePage page, TemplatePage layoutPage = null)
         {
@@ -379,11 +529,12 @@ Plugins: {{ plugins | select: \n  - { it | typeName } }}
             var result = new PageResult(page)
             {
                 Args = httpReq.GetTemplateRequestParams(),
-                LayoutPage = layoutPage
+                LayoutPage = layoutPage,
+                Model = Model,
             };
             try
             {
-                await result.WriteToAsync(httpRes.OutputStream);
+                await result.WriteToAsync(OutputStream ?? httpRes.OutputStream);
             }
             catch (Exception ex)
             {
@@ -396,6 +547,8 @@ Plugins: {{ plugins | select: \n  - { it | typeName } }}
     {
         private readonly TemplateCodePage page;
         private readonly TemplatePage layoutPage;
+        public object Model { get; set; }
+        public Stream OutputStream { get; set; }
 
         public TemplateCodePageHandler(TemplateCodePage page, TemplatePage layoutPage = null)
         {
@@ -405,19 +558,19 @@ Plugins: {{ plugins | select: \n  - { it | typeName } }}
 
         public override async Task ProcessRequestAsync(IRequest httpReq, IResponse httpRes, string operationName)
         {
-            var requiresRequest = page as IRequiresRequest;
-            if (requiresRequest != null)
+            if (page is IRequiresRequest requiresRequest)
                 requiresRequest.Request = httpReq;
 
             var result = new PageResult(page)
             {
                 Args = httpReq.GetTemplateRequestParams(),
-                LayoutPage = layoutPage
+                LayoutPage = layoutPage,
+                Model = Model,
             };
 
             try
             {
-                await result.WriteToAsync(httpRes.OutputStream);
+                await result.WriteToAsync(OutputStream ?? httpRes.OutputStream);
             }
             catch (Exception ex)
             {
@@ -434,14 +587,12 @@ Plugins: {{ plugins | select: \n  - { it | typeName } }}
             ContentType = MimeTypes.MarkdownText;
         }
 
-        private static readonly MarkdownSharp.Markdown markdown = new MarkdownSharp.Markdown();
-
         public static async Task<Stream> TransformToHtml(Stream markdownStream)
         {
             using (var reader = new StreamReader(markdownStream))
             {
                 var md = await reader.ReadToEndAsync();
-                var html = markdown.Transform(md);
+                var html = MarkdownConfig.Transformer.Transform(md);
                 return MemoryStreamFactory.GetStream(html.ToUtf8Bytes());
             }
         }

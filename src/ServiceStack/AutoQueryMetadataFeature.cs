@@ -232,15 +232,14 @@ namespace ServiceStack
             foreach (var op in metadataTypes.Operations)
             {
                 if (op.Request.Inherits != null 
-                    && (op.Request.Inherits.Name.StartsWith("QueryBase`") ||
-                        op.Request.Inherits.Name.StartsWith("QueryDb`") || 
+                    && (op.Request.Inherits.Name.StartsWith("QueryDb`") || 
                         op.Request.Inherits.Name.StartsWith("QueryData`"))
                     )
                 {
                     if (config.OnlyShowAnnotatedServices)
                     {
                         var serviceAttrs = op.Request.Attributes.Safe();
-                        var attr = serviceAttrs.FirstOrDefault(x => x.Name + "Attribute" == typeof(AutoQueryViewerAttribute).Name);
+                        var attr = serviceAttrs.FirstOrDefault(x => x.Name + "Attribute" == nameof(AutoQueryViewerAttribute));
                         if (attr == null)
                             continue;
                     }

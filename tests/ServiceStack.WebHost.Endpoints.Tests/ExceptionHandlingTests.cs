@@ -203,14 +203,10 @@ namespace ServiceStack.WebHost.Endpoints.Tests
     [TestFixture]
     public class ExceptionHandlingTests
     {
-        private const string ListeningOn = "http://localhost:1337/";
-
-        public class ExceptionHandlingAppHostHttpListener
-            : AppHostHttpListenerBase
+        public class AppHost : AppSelfHostBase
         {
-
-            public ExceptionHandlingAppHostHttpListener()
-                : base("Exception handling tests", typeof(UserService).GetAssembly()) { }
+            public AppHost()
+                : base(nameof(ExceptionHandlingTests), typeof(UserService).Assembly) {}
 
             public override void Configure(Container container)
             {
@@ -221,8 +217,8 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                 //Custom global uncaught exception handling strategy
                 this.UncaughtExceptionHandlers.Add((req, res, operationName, ex) =>
                 {
-                    res.Write(string.Format("UncaughtException {0}", ex.GetType().Name));
-                    res.EndRequest(skipHeaders: true);
+                    res.WriteAsync($"UncaughtException {ex.GetType().Name}")
+                       .ContinueWith(t => res.EndRequest(skipHeaders: true));
                 });
 
                 this.ServiceExceptionHandlers.Add((httpReq, request, ex) =>
@@ -231,9 +227,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                         throw ex;
 
                     if (request is CaughtException || request is CaughtExceptionAsync)
-                    {
                         return DtoUtils.CreateErrorResponse(request, new ArgumentException("ExceptionCaught"));
-                    }
 
                     return null;
                 });
@@ -245,21 +239,19 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                 base.OnExceptionTypeFilter(ex, responseStatus);
             }
 
-            public override void OnUncaughtException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
+            public override Task OnUncaughtException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
             {
                 "In OnUncaughtException...".Print();
-                base.OnUncaughtException(httpReq, httpRes, operationName, ex);
+                return base.OnUncaughtException(httpReq, httpRes, operationName, ex);
             }
         }
 
-        ExceptionHandlingAppHostHttpListener appHost;
-
-        [OneTimeSetUp]
-        public void OnTestFixtureSetUp()
+        AppHost appHost;
+        public ExceptionHandlingTests()
         {
-            appHost = new ExceptionHandlingAppHostHttpListener();
+            appHost = new AppHost();
             appHost.Init();
-            appHost.Start(ListeningOn);
+            appHost.Start(Config.ListeningOn);
         }
 
         [OneTimeTearDown]
@@ -271,10 +263,10 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
         static IRestClient[] ServiceClients = 
 		{
-			new JsonServiceClient(ListeningOn),
-			new JsonHttpClient(ListeningOn),
-			new XmlServiceClient(ListeningOn),
-			new JsvServiceClient(ListeningOn)
+			new JsonServiceClient(Config.ListeningOn),
+			new JsonHttpClient(Config.ListeningOn),
+			new XmlServiceClient(Config.ListeningOn),
+			new JsvServiceClient(Config.ListeningOn)
 			//SOAP not supported in HttpListener
 			//new Soap11ServiceClient(ServiceClientBaseUri),
 			//new Soap12ServiceClient(ServiceClientBaseUri)
@@ -365,7 +357,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
         public string PredefinedJsonUrl<T>()
         {
-            return ListeningOn + "json/reply/" + typeof(T).Name;
+            return Config.ListeningOn + "json/reply/" + typeof(T).Name;
         }
 
         [Test]
@@ -436,7 +428,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
             try
             {
-                var client = new JsonServiceClient(ListeningOn);
+                var client = new JsonServiceClient(Config.ListeningOn);
                 client.Get(new ExceptionReturnVoid());
                 Assert.Fail("Should throw");
             }

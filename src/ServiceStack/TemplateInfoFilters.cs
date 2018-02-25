@@ -16,7 +16,6 @@ namespace ServiceStack
     
     public class TemplateInfoFilters : TemplateFilter
     {
-
         public string envVariable(string variable) => Environment.GetEnvironmentVariable(variable);
         public string envExpandVariables(string name) => Environment.ExpandEnvironmentVariables(name);
         public string envStackTrace() => Environment.StackTrace;
@@ -28,17 +27,16 @@ namespace ServiceStack
 
         public bool envIsMono() => Env.IsMono;
         public bool envIsAndroid() => Env.IsAndroid;
-        public bool envIsMonoTouch() => Env.IsMonoTouch;
+        public bool envIsIOS() => Env.IsIOS;
+        public string licensedFeatures() => LicenseUtils.ActivatedLicenseFeatures() == LicenseFeature.All ? "All" : LicenseUtils.ActivatedLicenseFeatures().ToString();
 
-#if NET45
+        public string envCurrentDirectory() => Environment.CurrentDirectory;
         public bool envIsWindows() => Env.IsWindows;
         public bool envIsLinux() => Env.IsLinux;
         public bool envIsOSX() => Env.IsOSX;
-
         public IDictionary envVariables() => Environment.GetEnvironmentVariables();
         public OperatingSystem envOSVersion() => Environment.OSVersion;
         public string envCommandLine() => Environment.CommandLine;
-        public string envCurrentDirectory() => Environment.CurrentDirectory;
         public string envMachineName() => Environment.MachineName;
         public string envSystemDirectory() => Environment.SystemDirectory;
         public string envUserDomainName() => Environment.UserDomainName;
@@ -47,12 +45,8 @@ namespace ServiceStack
         public bool envIs64BitProcess() => Environment.Is64BitProcess;
         public Version envVersion() => Environment.Version;
         public string[] envLogicalDrives() => Environment.GetLogicalDrives();
-#elif NETSTANDARD1_3
-        public string envCurrentDirectory() => Directory.GetCurrentDirectory();
-        public bool envIsWindows() => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
-        public bool envIsLinux() => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux);
-        public bool envIsOSX() => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX);
 
+#if NETSTANDARD2_0
         public string envFrameworkDescription() => System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
         public string envOSDescription() => System.Runtime.InteropServices.RuntimeInformation.OSDescription;
         public System.Runtime.InteropServices.Architecture envOSArchitecture() => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture;
@@ -71,6 +65,10 @@ namespace ServiceStack
             userSession(scope)?.HasRole(role, HostContext.AppHost.GetAuthRepository(req(scope))) == true;
         public bool userHasPermission(TemplateScopeContext scope, string permission) => 
             userSession(scope)?.HasPermission(permission, HostContext.AppHost.GetAuthRepository(req(scope))) == true;
+
+        public string userId(TemplateScopeContext scope) => req(scope).GetSession()?.UserAuthId;
+        public string userName(TemplateScopeContext scope) => req(scope).GetSession()?.UserAuthName ?? req(scope).GetSession()?.UserName;
+        public string userEmail(TemplateScopeContext scope) => req(scope).GetSession()?.Email;
 
         public HashSet<Type> metaAllDtos() => HostContext.Metadata.GetAllDtos();
         public List<string> metaAllDtoNames() => HostContext.Metadata.GetOperationDtos().Map(x => x.Name);

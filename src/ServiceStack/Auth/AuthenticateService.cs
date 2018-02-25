@@ -46,8 +46,57 @@ namespace ServiceStack.Auth
             CurrentSessionFactory = () => new AuthUserSession();
         }
 
+        /// <summary>
+        /// Get AuthProviders Registered in AuthFeature Plugin.
+        /// </summary>
+        /// <param name="provider">specific provider, or null for all providers</param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public static IAuthProvider[] GetAuthProviders(string provider = null)
+        {
+            if (AuthProviders == null || AuthProviders.Length == 0)
+                return TypeConstants<IAuthProvider>.EmptyArray;
+
+            if (provider != null)
+            {
+                var matchingOAuthProviders = AuthProviders.Where(x =>
+                    string.IsNullOrEmpty(provider)
+                    || x.Provider == provider).ToArray();
+
+                return matchingOAuthProviders;
+            }
+
+            return AuthProviders;
+        }
+
+        public static IUserSessionSource GetUserSessionSource()
+        {
+            var userSessionSource = HostContext.TryResolve<IUserSessionSource>();
+            if (userSessionSource != null)
+                return userSessionSource;
+
+            if (AuthProviders != null)
+            {
+                foreach (var authProvider in AuthProviders)
+                {
+                    if (authProvider is IUserSessionSource sessionSource) //don't remove
+                        return sessionSource;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Get specific AuthProvider
+        /// </summary>
+        /// <param name="provider"></param>
+        /// <returns></returns>
         public static IAuthProvider GetAuthProvider(string provider)
         {
+            if (string.IsNullOrEmpty(provider))
+                throw new ArgumentNullException(nameof(provider));
+            
             if (AuthProviders.Length == 0)
                 return null;
             if (provider == LogoutAction)
@@ -55,17 +104,22 @@ namespace ServiceStack.Auth
 
             foreach (var authConfig in AuthProviders)
             {
-                if (string.Compare(authConfig.Provider, provider,
-                    StringComparison.OrdinalIgnoreCase) == 0)
+                if (string.Compare(authConfig.Provider, provider, StringComparison.OrdinalIgnoreCase) == 0)
                     return authConfig;
             }
 
             return null;
         }
 
-        public static IAuthProvider[] GetAuthProviders()
+        public static JwtAuthProviderReader GetJwtAuthProvider() => GetAuthProvider(JwtAuthProviderReader.Name) as JwtAuthProviderReader;
+
+        public static JwtAuthProviderReader GetRequiredJwtAuthProvider()
         {
-            return AuthProviders ?? TypeConstants<IAuthProvider>.EmptyArray;
+            var jwtProvider = GetJwtAuthProvider();
+            if (jwtProvider == null)
+                throw new NotSupportedException("JwtAuthProvider is required but was not registered in AuthFeature's AuthProviders");
+
+            return jwtProvider;
         }
 
         public static void Init(Func<IAuthSession> sessionFactory, params IAuthProvider[] authProviders)
@@ -127,12 +181,11 @@ namespace ServiceStack.Auth
             if (LogoutAction.EqualsIgnoreCase(request.provider))
                 return authProvider.Logout(this, request);
 
-            var authWithRequest = authProvider as IAuthWithRequest;
-            if (authWithRequest != null && !base.Request.IsInProcessRequest())
+            if (authProvider is IAuthWithRequest && !base.Request.IsInProcessRequest())
             {
                 //IAuthWithRequest normally doesn't call Authenticate directly, but they can to return Auth Info
                 //But as AuthenticateService doesn't have [Authenticate] we need to call it manually
-                new AuthenticateAttribute().Execute(base.Request, base.Response, request);
+                new AuthenticateAttribute().ExecuteAsync(base.Request, base.Response, request).Wait();
                 if (base.Response.IsClosed)
                     return null;
             }
@@ -149,7 +202,7 @@ namespace ServiceStack.Auth
                 session = this.GetSession();
 
                 if (request.provider == null && !session.IsAuthenticated)
-                    throw HttpError.Unauthorized(ErrorMessages.NotAuthenticated);
+                    throw HttpError.Unauthorized(ErrorMessages.NotAuthenticated.Localize(Request));
 
                 var referrerUrl = request.Continue
                     ?? session.ReferrerUrl
@@ -167,8 +220,7 @@ namespace ServiceStack.Auth
                     ReferrerUrl = referrerUrl,
                 };
 
-                var authResponse = response as AuthenticateResponse;
-                if (authResponse != null)
+                if (response is AuthenticateResponse authResponse)
                 {
                     var authCtx = new AuthFilterContext {
                         AuthService = this,
@@ -250,8 +302,7 @@ namespace ServiceStack.Auth
                     return oAuthConfig.Logout(this, request) as AuthenticateResponse;
 
                 var result = Authenticate(request, provider, this.GetSession(), oAuthConfig);
-                var httpError = result as HttpError;
-                if (httpError != null)
+                if (result is HttpError httpError)
                     throw httpError;
 
                 return result as AuthenticateResponse;
@@ -275,26 +326,11 @@ namespace ServiceStack.Auth
             var authFeature = HostContext.GetPlugin<AuthFeature>();
             var generateNewCookies = authFeature == null || authFeature.GenerateNewSessionCookiesOnAuthentication;
 
-            object response = null;
+            if (generateNewCookies)
+                this.Request.GenerateNewSessionCookies(session);
 
-            var doAuth = !(authFeature?.SkipAuthenticationIfAlreadyAuthenticated == true)
-                || !oAuthConfig.IsAuthorized(session, session.GetAuthTokens(provider), request);
+            var response = oAuthConfig.Authenticate(this, session, request);
 
-            if (doAuth)
-            {
-                if (generateNewCookies)
-                    this.Request.GenerateNewSessionCookies(session);
-
-                response = oAuthConfig.Authenticate(this, session, request);
-            }
-            else
-            {
-                if (generateNewCookies)
-                {
-                    this.Request.GenerateNewSessionCookies(session);
-                    oAuthConfig.SaveSession(this, session, (oAuthConfig as AuthProvider)?.SessionExpiry);
-                }
-            }
             return response;
         }
 

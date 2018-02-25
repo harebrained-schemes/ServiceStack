@@ -92,12 +92,13 @@ namespace Funq
 
             foreach (var serviceEntry in services.Values)
             {
-                var disposable = serviceEntry.GetInstance() as IDisposable;
-                if (disposable != null && !(disposable is Container))
+                if (serviceEntry.GetInstance() is IDisposable disposable && !(disposable is Container))
                 {
                     disposable.Dispose();
                 }
             }
+            
+            using (Adapter as IDisposable){}
         }
 
         /// <include file='Container.xdoc' path='docs/doc[@for="Container.Register(instance)"]/*'/>
@@ -418,7 +419,7 @@ namespace Funq
                 var genericDef = typeof(TService).FirstGenericTypeDefinition();
                 if (genericDef != null && genericDef.Name.StartsWith("Func`")) //Lazy Dependencies
                 {
-                    var argTypes = typeof(TService).GetTypeGenericArguments();
+                    var argTypes = typeof(TService).GetGenericArguments();
                     var lazyResolver = GetLazyResolver(argTypes);
 
                     return new ServiceEntry<TService, TFunc>(

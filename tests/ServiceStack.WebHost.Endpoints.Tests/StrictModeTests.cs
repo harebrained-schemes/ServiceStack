@@ -1,6 +1,7 @@
 ﻿using Funq;
 using NUnit.Framework;
 using ServiceStack.Auth;
+using ServiceStack.Text;
 
 namespace ServiceStack.WebHost.Endpoints.Tests
 {
@@ -17,7 +18,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         class AppHost : AppSelfHostBase
         {
             public AppHost()
-                : base(nameof(StrictModeTests), typeof(BadService).GetAssembly()) { }
+                : base(nameof(StrictModeTests), typeof(BadService).Assembly) { }
 
             public override void Configure(Container container)
             {
@@ -60,7 +61,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         class BadUserSessionAppHost : AppSelfHostBase
         {
             public BadUserSessionAppHost()
-                : base(nameof(StrictModeTests), typeof(BadService).GetAssembly()) { }
+                : base(nameof(StrictModeTests), typeof(BadService).Assembly) { }
 
             public override void Configure(Container container)
             {
@@ -87,13 +88,21 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
 
         [Test]
+        public void Does_recognize_Cyclical_Deps()
+        {
+            Assert.That(TypeSerializer.HasCircularReferences(new BadUserSession()));
+        }
+
+        [Test]
         public void Using_UserSession_with_Cyclical_deps_throws_StrictModeException()
         {
             using (var appHost = new BadUserSessionAppHost())
             {
                 try
                 {
-                    appHost.Init();
+                    appHost
+                        .Init()
+                        .Start(Config.ListeningOn); //.NET Core has delayed initialization
                     Assert.Fail("Should throw");
                 }
                 catch (StrictModeException ex)

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using ServiceStack.Configuration;
@@ -56,32 +57,36 @@ namespace ServiceStack.Auth
                         perms = authRepo.GetPermissions(session.UserAuthId);
                     }
 
-                    authContext.AuthResponse.BearerToken = CreateJwtBearerToken(session, roles, perms);
+                    authContext.AuthResponse.BearerToken = CreateJwtBearerToken(authContext.AuthService.Request, session, roles, perms);
                     authContext.AuthResponse.RefreshToken = EnableRefreshToken()
-                        ? CreateJwtRefreshToken(session.UserAuthId)
+                        ? CreateJwtRefreshToken(authService.Request, session.UserAuthId, ExpireRefreshTokensIn)
                         : null;
                 }
             }
         }
 
-        public Func<byte[], byte[]> GetHashAlgorithm()
+        public Func<byte[], byte[]> GetHashAlgorithm() => GetHashAlgorithm(null);
+
+        public Func<byte[], byte[]> GetHashAlgorithm(IRequest req)
         {
             Func<byte[], byte[]> hashAlgoritm = null;
 
             if (HmacAlgorithms.TryGetValue(HashAlgorithm, out var hmac))
             {
-                if (AuthKey == null)
+                var authKey = GetAuthKey(req);
+                if (authKey == null)
                     throw new NotSupportedException("AuthKey required to use: " + HashAlgorithm);
 
-                hashAlgoritm = data => hmac(AuthKey, data);
+                hashAlgoritm = data => hmac(authKey, data);
             }
 
             if (RsaSignAlgorithms.TryGetValue(HashAlgorithm, out var rsa))
             {
-                if (PrivateKey == null)
+                var privateKey = GetPrivateKey(req);
+                if (privateKey == null)
                     throw new NotSupportedException("PrivateKey required to use: " + HashAlgorithm);
 
-                hashAlgoritm = data => rsa(PrivateKey.Value, data);
+                hashAlgoritm = data => rsa(privateKey.Value, data);
             }
 
             if (hashAlgoritm == null)
@@ -90,36 +95,41 @@ namespace ServiceStack.Auth
             return hashAlgoritm;
         }
 
-        public string CreateJwtBearerToken(IAuthSession session, IEnumerable<string> roles = null, IEnumerable<string> perms = null)
+        public string CreateJwtBearerToken(IAuthSession session, IEnumerable<string> roles = null, IEnumerable<string> perms = null) =>
+            CreateJwtBearerToken(null, session, roles, perms);
+
+        public string CreateJwtBearerToken(IRequest req, IAuthSession session, IEnumerable<string> roles = null, IEnumerable<string> perms = null)
         {
             var jwtPayload = CreateJwtPayload(session, Issuer, ExpireTokensIn, Audience, roles, perms);
             CreatePayloadFilter?.Invoke(jwtPayload, session);
 
             if (EncryptPayload)
             {
-                if (PrivateKey == null || PublicKey == null)
-                    throw new NotSupportedException("PrivateKey is required to EncryptPayload");
+                var publicKey = GetPublicKey(req);
+                if (publicKey == null)
+                    throw new NotSupportedException("PublicKey is required to EncryptPayload");
 
-                return CreateEncryptedJweToken(jwtPayload, PublicKey.Value);
+                return CreateEncryptedJweToken(jwtPayload, publicKey.Value);
             }
 
-            var jwtHeader = CreateJwtHeader(HashAlgorithm, GetKeyId());
+            var jwtHeader = CreateJwtHeader(HashAlgorithm, GetKeyId(req));
             CreateHeaderFilter?.Invoke(jwtHeader, session);
 
-            var hashAlgoritm = GetHashAlgorithm();
+            var hashAlgoritm = GetHashAlgorithm(req);
             var bearerToken = CreateJwt(jwtHeader, jwtPayload, hashAlgoritm);
             return bearerToken;
         }
 
-        public string CreateJwtRefreshToken(string userId)
+        public string CreateJwtRefreshToken(string userId, TimeSpan expireRefreshTokenIn) => CreateJwtRefreshToken(null, userId, expireRefreshTokenIn);
+        public string CreateJwtRefreshToken(IRequest req, string userId, TimeSpan expireRefreshTokenIn)
         {
             var jwtHeader = new JsonObject
             {
-                { "typ", "JWTR" }, //RefreshToken
-                { "alg", HashAlgorithm }
+                {"typ", "JWTR"}, //RefreshToken
+                {"alg", HashAlgorithm}
             };
 
-            var keyId = GetKeyId();
+            var keyId = GetKeyId(req);
             if (keyId != null)
                 jwtHeader["kid"] = keyId;
 
@@ -128,19 +138,23 @@ namespace ServiceStack.Auth
             {
                 {"sub", userId},
                 {"iat", now.ToUnixTime().ToString()},
-                {"exp", now.Add(ExpireRefreshTokensIn).ToUnixTime().ToString()},
+                {"exp", now.Add(expireRefreshTokenIn).ToUnixTime().ToString()},
             };
 
             if (Audience != null)
                 jwtPayload["aud"] = Audience;
 
-            var hashAlgoritm = GetHashAlgorithm();
+            var hashAlgoritm = GetHashAlgorithm(req);
             var refreshToken = CreateJwt(jwtHeader, jwtPayload, hashAlgoritm);
             return refreshToken;
         }
 
         protected virtual bool EnableRefreshToken()
         {
+            var userSessionSource = AuthenticateService.GetUserSessionSource();
+            if (userSessionSource != null)
+                return true;
+
             var authRepo = HostContext.AppHost?.TryResolve<IAuthRepository>();
             if (authRepo == null)
                 return false;
@@ -229,10 +243,6 @@ namespace ServiceStack.Auth
             }
         }
 
-        [Obsolete("Renamed to CreateJwt")]
-        public static string CreateJwtBearerToken(JsonObject jwtHeader, JsonObject jwtPayload, Func<byte[], byte[]> signData)
-            => CreateJwt(jwtHeader, jwtPayload, signData);
-
         public static string CreateJwt(
             JsonObject jwtHeader,
             JsonObject jwtPayload,
@@ -304,10 +314,8 @@ namespace ServiceStack.Auth
             var combinedRoles = new List<string>(session.Roles.Safe());
             var combinedPerms = new List<string>(session.Permissions.Safe());
 
-            if (roles != null)
-                combinedRoles.AddRange(roles);
-            if (permissions != null)
-                combinedPerms.AddRange(permissions);
+            roles.Each(x => combinedRoles.AddIfNotExists(x));
+            permissions.Each(x => combinedPerms.AddIfNotExists(x));
 
             if (combinedRoles.Count > 0)
                 jwtPayload["roles"] = combinedRoles.ToJson();
@@ -325,20 +333,23 @@ namespace ServiceStack.Auth
     {
         public object Any(ConvertSessionToToken request)
         {
-            if (!(AuthenticateService.GetAuthProvider(JwtAuthProvider.Name) is JwtAuthProvider jwtAuthProvider))
-                throw new NotSupportedException("JwtAuthProvider is not registered");
+            var jwtAuthProvider = (JwtAuthProvider)AuthenticateService.GetRequiredJwtAuthProvider();
 
             if (jwtAuthProvider.RequireSecureConnection && !Request.IsSecureConnection)
-                throw HttpError.Forbidden(ErrorMessages.JwtRequiresSecureConnection);
+                throw HttpError.Forbidden(ErrorMessages.JwtRequiresSecureConnection.Localize(Request));
 
-            var session = Request.GetSession();
-            if (session.FromToken)
-                return new ConvertSessionToTokenResponse();
+            if (Request.ResponseContentType.MatchesContentType(MimeTypes.Html))
+                Request.ResponseContentType = MimeTypes.Json;
 
-            var token = jwtAuthProvider.CreateJwtBearerToken(session);
+            var token = Request.GetJwtToken();
+            if (string.IsNullOrEmpty(token))
+            {
+                var session = Request.GetSession();
+                token = jwtAuthProvider.CreateJwtBearerToken(Request, session);
 
-            if (!request.PreserveSession)
-                Request.RemoveSession(session.Id);
+                if (!request.PreserveSession)
+                    Request.RemoveSession(session.Id);
+            }
 
             return new HttpResult(new ConvertSessionToTokenResponse())
             {
@@ -358,22 +369,18 @@ namespace ServiceStack.Auth
     {
         public object Any(GetAccessToken request)
         {
-            if (!(AuthenticateService.GetAuthProvider(JwtAuthProvider.Name) is JwtAuthProvider jwtAuthProvider))
-                throw new NotSupportedException("JwtAuthProvider is not registered");
+            var jwtAuthProvider = (JwtAuthProvider)AuthenticateService.GetRequiredJwtAuthProvider();
 
             if (jwtAuthProvider.RequireSecureConnection && !Request.IsSecureConnection)
-                throw HttpError.Forbidden(ErrorMessages.JwtRequiresSecureConnection);
+                throw HttpError.Forbidden(ErrorMessages.JwtRequiresSecureConnection.Localize(Request));
 
             if (string.IsNullOrEmpty(request.RefreshToken))
                 throw new ArgumentNullException(nameof(request.RefreshToken));
 
-            if (!(AuthRepository is IUserAuthRepository userRepo))
-                throw new NotSupportedException("JWT Refresh Tokens requires a registered IUserAuthRepository");
-
             JsonObject jwtPayload;
             try
             {
-                jwtPayload = jwtAuthProvider.GetVerifiedJwtPayload(request.RefreshToken.Split('.'));
+                jwtPayload = jwtAuthProvider.GetVerifiedJwtPayload(Request, request.RefreshToken.Split('.'));
             }
             catch (ArgumentException)
             {
@@ -387,28 +394,45 @@ namespace ServiceStack.Auth
             jwtAuthProvider.AssertJwtPayloadIsValid(jwtPayload);
 
             if (jwtAuthProvider.ValidateRefreshToken != null && !jwtAuthProvider.ValidateRefreshToken(jwtPayload, Request))
-                throw new ArgumentException(ErrorMessages.RefreshTokenInvalid, nameof(request.RefreshToken));
+                throw new ArgumentException(ErrorMessages.RefreshTokenInvalid.Localize(Request), nameof(request.RefreshToken));
 
             var userId = jwtPayload["sub"];
 
-            var userAuth = userRepo.GetUserAuth(userId);
-            if (userAuth == null)
-                throw HttpError.NotFound(ErrorMessages.UserNotExists);
-
-            if (jwtAuthProvider.IsAccountLocked(userRepo, userAuth))
-                throw new AuthenticationException(ErrorMessages.UserAccountLocked);
-
-            var session = SessionFeature.CreateNewSession(Request, SessionExtensions.CreateRandomSessionId());
-            jwtAuthProvider.PopulateSession(userRepo, userAuth, session);
-
+            IAuthSession session;
             IEnumerable<string> roles = null, perms = null;
-            if (userRepo is IManageRoles manageRoles && session.UserAuthId != null)
-            {
-                roles = manageRoles.GetRoles(session.UserAuthId);
-                perms = manageRoles.GetPermissions(session.UserAuthId);
-            }
 
-            var accessToken = jwtAuthProvider.CreateJwtBearerToken(session, roles, perms);
+            var userSessionSource = AuthenticateService.GetUserSessionSource();
+            if (userSessionSource != null)
+            {
+                session = userSessionSource.GetUserSession(userId);
+                if (session == null)
+                    throw HttpError.NotFound(ErrorMessages.UserNotExists.Localize(Request));
+
+                roles = session.Roles;
+                perms = session.Permissions;
+            }
+            else if (AuthRepository is IUserAuthRepository userRepo)
+            {
+                var userAuth = userRepo.GetUserAuth(userId);
+                if (userAuth == null)
+                    throw HttpError.NotFound(ErrorMessages.UserNotExists.Localize(Request));
+
+                if (jwtAuthProvider.IsAccountLocked(userRepo, userAuth))
+                    throw new AuthenticationException(ErrorMessages.UserAccountLocked.Localize(Request));
+
+                session = SessionFeature.CreateNewSession(Request, SessionExtensions.CreateRandomSessionId());
+                jwtAuthProvider.PopulateSession(userRepo, userAuth, session);
+
+                if (userRepo is IManageRoles manageRoles && session.UserAuthId != null)
+                {
+                    roles = manageRoles.GetRoles(session.UserAuthId);
+                    perms = manageRoles.GetPermissions(session.UserAuthId);
+                }
+            }
+            else
+                throw new NotSupportedException("JWT RefreshTokens requires a registered IUserAuthRepository or an AuthProvider implementing IUserSessionSource");
+
+            var accessToken = jwtAuthProvider.CreateJwtBearerToken(Request, session, roles, perms);
 
             return new GetAccessTokenResponse
             {

@@ -147,7 +147,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
     {
         class AppHost : AppSelfHostBase
         {
-            public AppHost() : base(nameof(AsyncFiltersTests), typeof(TestAsyncFilterService).GetAssembly()) { }
+            public AppHost() : base(nameof(AsyncFiltersTests), typeof(TestAsyncFilterService).Assembly) { }
 
             public static int CancelledAt = -1;
 
@@ -158,15 +158,14 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                 GlobalRequestFiltersAsync.Add(CreateAsyncFilter(2));
 
                 Plugins.Add(new ValidationFeature());
-                container.RegisterValidators(typeof(MyTestAsyncValidator).GetAssembly());
+                container.RegisterValidators(typeof(MyTestAsyncValidator).Assembly);
             }
 
             private static Func<IRequest, IResponse, object, Task> CreateAsyncFilter(int pos)
             {
                 return (req, res, dto) =>
                 {
-                    var asyncDto = dto as TestAsyncFilter;
-                    if (asyncDto != null)
+                    if (dto is TestAsyncFilter asyncDto)
                     {
                         CancelledAt++;
 
@@ -174,9 +173,8 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                         if (asyncDto.ReturnAt == pos)
                         {
                             res.ContentType = MimeTypes.Json;
-                            res.Write(asyncDto.ToJson());
-                            res.EndRequest(skipHeaders: true);
-                            return TypeConstants.EmptyTask;
+                            return res.WriteAsync(asyncDto.ToJson())
+                                .ContinueWith(t => res.EndRequest(skipHeaders: true));
                         }
 
                         if (asyncDto.ErrorAt == pos)
@@ -185,8 +183,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                         if (asyncDto.DirectErrorAt == pos)
                         {
                             res.ContentType = MimeTypes.Json;
-                            res.WriteError(new ArgumentException("DirectErrorAt#" + pos));
-                            return TypeConstants.EmptyTask;
+                            return res.WriteError(new ArgumentException("DirectErrorAt#" + pos));
                         }
 
                         if (asyncDto.CancelAt == pos)

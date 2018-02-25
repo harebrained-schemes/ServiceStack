@@ -8,7 +8,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using ServiceStack.Text;
 
-#if NETSTANDARD1_3
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
@@ -236,7 +236,7 @@ namespace ServiceStack.Templates
                         if (depth >= 1)
                         {
                             var memberName = member.Value;
-                            if (typeof(IDictionary).IsAssignableFromType(currType))
+                            if (typeof(IDictionary).IsAssignableFrom(currType))
                             {
                                 var pi = AssertProperty(currType, "Item", expr);
                                 currType = pi.PropertyType;
@@ -252,7 +252,7 @@ namespace ServiceStack.Templates
                                 }
                                 else
                                 {
-                                    var fi = currType.GetFieldInfo(memberName);
+                                    var fi = currType.GetField(memberName);
                                     if (fi != null)
                                         currType = fi.FieldType;
                                 }

@@ -14,12 +14,12 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 {
     public class CustomValidationAppHost : AppHostHttpListenerBase
     {
-        public CustomValidationAppHost() : base("Custom Error", typeof(CustomValidationAppHost).GetAssembly()) { }
+        public CustomValidationAppHost() : base("Custom Error", typeof(CustomValidationAppHost).Assembly) { }
 
         public override void Configure(Container container)
         {
             Plugins.Add(new ValidationFeature { ErrorResponseFilter = CustomValidationError });
-            container.RegisterValidators(typeof(MyValidator).GetAssembly());
+            container.RegisterValidators(typeof(MyValidator).Assembly);
         }
 
         public static object CustomValidationError(ValidationResult validationResult, object errorDto)
@@ -89,7 +89,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
     }
 
-    public class CustomValidationService : Service
+    public class CustomValidationErrorService : Service
     {
         public object Get(CustomError request)
         {

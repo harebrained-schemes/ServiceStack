@@ -1,8 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFrameworks>net45;netcoreapp2.0</TargetFrameworks>
-    <!--<TargetFrameworks>net45</TargetFrameworks>-->
-    <!--<DebugType>portable</DebugType>-->
+    <TargetFrameworks>net46;netcoreapp2.0</TargetFrameworks>
     <OutputType>Library</OutputType>
     <AssemblyName>ServiceStack.WebHost.Endpoints.Tests</AssemblyName>
     <PackageId>ServiceStack.WebHost.Endpoints.Tests</PackageId>
@@ -16,14 +14,16 @@
     <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="NUnit" Version="3.7.1" />
-    <PackageReference Include="Wire" Version="0.8.2" />
+    <PackageReference Include="NUnit3TestAdapter" Version="3.9.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.5.0" />
+    <PackageReference Include="NUnit" Version="3.9.0" />
     <PackageReference Include="AWSSDK.Core" Version="3.3.10.6" />
     <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.3.4.4" />
     <ProjectReference Include="..\..\src\ServiceStack.Api.OpenApi\ServiceStack.Api.OpenApi.csproj">
       <Project>{5E258282-86A6-4780-AB25-5E458F2E6F70}</Project>
       <Name>ServiceStack.Api.OpenApi</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\src\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
     <ProjectReference Include="..\..\src\ServiceStack.Client\ServiceStack.Client.csproj" />
     <ProjectReference Include="..\..\src\ServiceStack.Common\ServiceStack.Common.csproj" />
     <ProjectReference Include="..\..\src\ServiceStack\ServiceStack.csproj" />
@@ -34,12 +34,12 @@
     <ProjectReference Include="..\..\src\ServiceStack.ProtoBuf\ServiceStack.ProtoBuf.csproj" />
     <ProjectReference Include="..\ServiceStack.Common.Tests\ServiceStack.Common.Tests.csproj" />
   </ItemGroup>
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net45' ">
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net46' ">
     <DefineConstants>$(DefineConstants);NET45</DefineConstants>
   </PropertyGroup>
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
-    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.105.2" />
-    <PackageReference Include="Mysql.Data" Version="6.9.9" />
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net46' ">
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.106" />
+    <PackageReference Include="Mysql.Data" Version="6.9.10" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Data" />
     <Reference Include="System.Configuration" />
@@ -47,8 +47,8 @@
     <Reference Include="System.Net" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.ComponentModel.DataAnnotations" />
+    <ProjectReference Include="..\..\src\ServiceStack.NetFramework\ServiceStack.NetFramework.csproj" />
     <ProjectReference Include="..\ServiceStack.ServiceModel.Tests\ServiceStack.ServiceModel.Tests.csproj" />
-    <Reference Include="..\..\lib\pcl\ServiceStack.Interfaces.dll" />
     <Reference Include="..\..\lib\net45\ServiceStack.Text.dll" />
     <Reference Include="..\..\lib\net45\ServiceStack.Redis.dll" />
     <Reference Include="..\..\lib\net45\ServiceStack.OrmLite.dll" />
@@ -74,18 +74,21 @@
   <ItemGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.0' ">
     <PackageReference Include="System.Reflection.TypeExtensions" Version="4.3.0" />
     <PackageReference Include="System.Threading" Version="4.3.0" />
-    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="1.1.2" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="1.1.1" />
-    <PackageReference Include="System.Data.SqlClient" Version="4.3.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="2.0.0" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.4.0" />
     <ProjectReference Include="..\..\src\ServiceStack.Kestrel\ServiceStack.Kestrel.csproj" />
-    <Reference Include="..\..\lib\netstandard1.1\ServiceStack.Interfaces.dll" />
-    <Reference Include="..\..\lib\netstandard1.3\ServiceStack.Text.dll" />
-    <Reference Include="..\..\lib\netstandard1.3\ServiceStack.Redis.dll" />
-    <Reference Include="..\..\lib\netstandard1.3\ServiceStack.OrmLite.dll" />
-    <Reference Include="..\..\lib\netstandard1.3\ServiceStack.OrmLite.Sqlite.dll" />
-    <Reference Include="..\..\lib\netstandard1.3\ServiceStack.OrmLite.SqlServer.dll" />
-    <Reference Include="..\..\lib\netstandard1.6\ServiceStack.OrmLite.MySql.dll" />
-    <Reference Include="..\..\lib\netstandard1.6\ServiceStack.Aws.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Text.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Redis.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.OrmLite.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.OrmLite.Sqlite.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.OrmLite.SqlServer.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.OrmLite.MySql.dll" />
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Aws.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Update="App_Data\customers.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Update="TestExistingDir\default.html">

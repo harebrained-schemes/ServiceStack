@@ -33,12 +33,12 @@ namespace ServiceStack.OpenApi.Tests.Host
     }
 
     public class TestAppHost
-    : AppSelfHostBase
+        : AppSelfHostBase
     {
         //private static ILog log;
 
         public TestAppHost()
-            : base("ServiceStack Autorest Client", typeof(NativeTypesTestService).GetAssembly())
+            : base("ServiceStack Autorest Client", typeof(NativeTypesTestService).Assembly)
         {
             //LogManager.LogFactory = new DebugLogFactory();
             //log = LogManager.GetLogger(typeof(ExampleAppHostHttpListener));

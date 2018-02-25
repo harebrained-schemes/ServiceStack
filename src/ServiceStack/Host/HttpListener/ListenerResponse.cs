@@ -1,4 +1,4 @@
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
 
 //Copyright (c) ServiceStack, Inc. All Rights Reserved.
 //License: https://raw.github.com/ServiceStack/ServiceStack/master/license.txt
@@ -31,24 +31,24 @@ namespace ServiceStack.Host.HttpListener
 
         public object OriginalResponse => response;
 
-        public IRequest Request { get; private set; }
+        public IRequest Request { get; }
 
         public int StatusCode
         {
-            get { return this.response.StatusCode; }
-            set { this.response.StatusCode = value; }
+            get => this.response.StatusCode;
+            set => this.response.StatusCode = value;
         }
 
         public string StatusDescription
         {
-            get { return this.response.StatusDescription; }
-            set { this.response.StatusDescription = value; }
+            get => this.response.StatusDescription;
+            set => this.response.StatusDescription = value;
         }
 
         public string ContentType
         {
-            get { return response.ContentType; }
-            set { response.ContentType = value; }
+            get => response.ContentType;
+            set => response.ContentType = value;
         }
 
         public void AddHeader(string name, string value)
@@ -76,13 +76,10 @@ namespace ServiceStack.Host.HttpListener
 
         public bool UseBufferedStream
         {
-            get { return BufferedStream != null; }
-            set
-            {
-                BufferedStream = value
-                    ? BufferedStream ?? new MemoryStream()
-                    : null;
-            }
+            get => BufferedStream != null;
+            set => BufferedStream = value
+                ? BufferedStream ?? new MemoryStream()
+                : null;
         }
 
         private void FlushBufferIfAny()
@@ -100,21 +97,6 @@ namespace ServiceStack.Host.HttpListener
         }
 
         public object Dto { get; set; }
-
-        public void Write(string text)
-        {
-            try
-            {
-                var bOutput = System.Text.Encoding.UTF8.GetBytes(text);
-                response.ContentLength64 += bOutput.Length; // required to avoid ProtocolViolation
-                OutputStream.Write(bOutput, 0, bOutput.Length);
-            }
-            catch (Exception ex)
-            {
-                Log.Error("Could not WriteTextToResponse: " + ex.Message, ex);
-                throw;
-            }
-        }
 
         public void Close()
         {
@@ -182,9 +164,14 @@ namespace ServiceStack.Host.HttpListener
 
         public bool KeepAlive
         {
-            get { return response.KeepAlive; }
-            set { response.KeepAlive = true; }
+            get => response.KeepAlive;
+            set => response.KeepAlive = true;
         }
+
+        /// <summary>
+        /// Can ignore as doesn't throw if HTTP Headers already written
+        /// </summary>
+        public bool HasStarted => false;
 
         public Dictionary<string, object> Items { get; private set; }
 

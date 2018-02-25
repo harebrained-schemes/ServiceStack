@@ -31,6 +31,8 @@
         public static string IRequest = "__irequest";
         public static string RequestDuration = "_requestDurationStopwatch";
         public static string Code = "code";
+        public static string View = "View";
+        public static string Template = "Template";
     }
 
     public static class LocalizedStrings
@@ -59,7 +61,6 @@
         public static string ShouldNotRegisterAuthSession = "AuthSession's are rehydrated from ICacheClient and should not be registered in IOC's when not in HostContext.TestMode";
         public static string ApiKeyRequiresSecureConnection = "Sending ApiKey over insecure connection forbidden when RequireSecureConnection=true";
         public static string JwtRequiresSecureConnection = "Sending JWT over insecure connection forbidden when RequireSecureConnection=true";
-        public static string InvalidSignature = "Invalid Signature";
         public static string TokenInvalidated = "Token has been invalidated";
         public static string TokenExpired = "Token has expired";
         public static string TokenInvalid = "Token is invalid";
@@ -73,6 +74,7 @@
         public static string AuthRepositoryNotExists = "No IAuthRepository registered or failed to resolve. Check your IoC registrations.";
         public static string UsernameAlreadyExists = "Username already exists";
         public static string EmailAlreadyExists = "Email already exists";
+        public static string RegisterUpdatesDisabled = "Updating User Info is not enabled";
 
         //AuthRepo
         public static string UserAlreadyExistsTemplate1 = "User '{0}' already exists";
@@ -97,6 +99,13 @@
         public static string ConstructorNotFoundForType = "Constructor not found for Type '{0}'";
         public static string ServiceNotFoundForType = "Service not found for Type '{0}'";
         public static string CacheFeatureMustBeEnabled = "HttpCacheFeature Plugin must be registered to use {0}";
+        
+        //Request
+        public static string ContentTypeNotSupported = "ContentType not supported '{0}'";
+
+        //Configuration
+        public static string AppsettingNotFound = "Unable to find App Setting: {0}";
+        public static string ConnectionStringNotFound = "Unable to find Connection String: {0}";
     }
 
     public static class HelpMessages

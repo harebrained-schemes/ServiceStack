@@ -21,6 +21,7 @@ using ServiceStack.Redis;
 using ServiceStack.Api.Swagger;
 using ServiceStack.Common.Tests;
 using ServiceStack.DataAnnotations;
+using ServiceStack.Formats;
 using ServiceStack.Shared.Tests;
 using ServiceStack.Text;
 using ServiceStack.Validation;
@@ -57,6 +58,7 @@ namespace ServiceStack.WebHost.IntegrationTests
                 IocShared.Configure(this);
 
                 JsConfig.EmitCamelCaseNames = true;
+                ServiceStack.Auth.RegisterService.AllowUpdates = true;
 
                 this.PreRequestFilters.Add((req, res) =>
                 {
@@ -67,8 +69,7 @@ namespace ServiceStack.WebHost.IntegrationTests
                 {
                     req.Items["_DataSetAtRequestFilters"] = true;
 
-                    var requestFilter = dto as RequestFilter;
-                    if (requestFilter != null)
+                    if (dto is RequestFilter requestFilter)
                     {
                         res.StatusCode = requestFilter.StatusCode;
                         if (!requestFilter.HeaderName.IsNullOrEmpty())
@@ -78,12 +79,14 @@ namespace ServiceStack.WebHost.IntegrationTests
                         res.Close();
                     }
 
-                    var secureRequests = dto as IRequiresSession;
-                    if (secureRequests != null)
+                    if (dto is IRequiresSession secureRequests)
                     {
                         res.ReturnAuthRequired();
                     }
                 });
+                
+                Plugins.Add(new SoapFormat());
+                Plugins.Add(new MiniProfilerFeature());
 
                 this.Container.Register<IDbConnectionFactory>(c =>
                     new OrmLiteConnectionFactory(
@@ -160,6 +163,10 @@ namespace ServiceStack.WebHost.IntegrationTests
                     ApiVersion = "0.2.0",
                     //EnableFeatures = onlyEnableFeatures,
                     DebugMode = true, //Show StackTraces for easier debugging
+                    RedirectPaths =
+                    {
+                        { "/swagger-ui", "/swagger-ui/" }
+                    }
                 });
 
                 if (StartMqHost)

@@ -17,12 +17,11 @@ namespace ServiceStack
 
         public Func<string, bool> IsValidUsernameFn { get; set; }
 
-        public static bool AddUserIdHttpHeader = true;
-
         private readonly Func<IAuthSession> sessionFactory;
         private readonly IAuthProvider[] authProviders;
 
         public Dictionary<Type, string[]> ServiceRoutes { get; set; }
+
         public List<IPlugin> RegisterPlugins { get; set; }
 
         public List<IAuthEvents> AuthEvents { get; set; }
@@ -42,14 +41,18 @@ namespace ServiceStack
         public bool GenerateNewSessionCookiesOnAuthentication { get; set; }
         
         /// <summary>
+        /// Whether to Create Digest Auth MD5 Hash when Creating/Updating Users.
+        /// Defaults to only creating Digest Auth when DigestAuthProvider is registered.
+        /// </summary>
+        public bool CreateDigestAuthHashes { get; set; }
+
+        /// <summary>
         /// Should UserName or Emails be saved in AuthRepository in LowerCase
         /// </summary>
         public bool SaveUserNamesInLowerCase { get; set; }
 
-        [Obsolete("Please update your App to not rely on this behavior as we plan on removing it eventually")]
-        public bool SkipAuthenticationIfAlreadyAuthenticated { get; set; }
-
         public TimeSpan? SessionExpiry { get; set; }
+
         public TimeSpan? PermanentSessionExpiry { get; set; }
 
         public int? MaxLoginAttempts { get; set; }
@@ -90,7 +93,7 @@ namespace ServiceStack
             this.sessionFactory = sessionFactory;
             this.authProviders = authProviders;
 
-            Func<string, string> localize = s => HostContext.AppHost.ResolveLocalizedString(s, null);
+            string localize(string s) => HostContext.AppHost.ResolveLocalizedString(s, null);
 
             ServiceRoutes = new Dictionary<Type, string[]> {
                 { typeof(AuthenticateService), new[]
@@ -115,6 +118,7 @@ namespace ServiceStack
             this.ValidateUniqueEmails = true;
             this.DeleteSessionCookiesOnLogout = true;
             this.GenerateNewSessionCookiesOnAuthentication = true;
+            this.CreateDigestAuthHashes = authProviders.Any(x => x is DigestAuthProvider);
         }
 
         public void Register(IAppHost appHost)

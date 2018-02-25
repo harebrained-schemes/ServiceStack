@@ -27,7 +27,7 @@ namespace ServiceStack.Host.Handlers
 
         protected virtual Task CreateProcessRequestTask(IRequest httpReq, IResponse httpRes, string operationName)
         {
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
             var currentCulture = Thread.CurrentThread.CurrentCulture;
             var currentUiCulture = Thread.CurrentThread.CurrentUICulture;
             var ctx = HttpContext.Current;
@@ -36,7 +36,7 @@ namespace ServiceStack.Host.Handlers
             //preserve Current Culture:
             return new Task(() =>
             {
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
                 Thread.CurrentThread.CurrentCulture = currentCulture;
                 Thread.CurrentThread.CurrentUICulture = currentUiCulture;
                 //HttpContext is not preserved in ThreadPool threads: http://stackoverflow.com/a/13558065/85785
@@ -77,7 +77,7 @@ namespace ServiceStack.Host.Handlers
             return task;
         }
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
         protected static bool DefaultHandledRequest(HttpListenerContext context) => false;
 
         protected static bool DefaultHandledRequest(HttpContextBase context) => false;
@@ -165,22 +165,21 @@ namespace ServiceStack.Host.Handlers
 
         public virtual bool IsReusable => false;
 
-        protected Task HandleException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
+        protected async Task HandleException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
         {
             var errorMessage = $"Error occured while Processing Request: {ex.Message}";
             HostContext.AppHost.OnLogError(typeof(HttpAsyncTaskHandler), errorMessage, ex);
 
             try
             {
-                HostContext.RaiseAndHandleUncaughtException(httpReq, httpRes, operationName, ex);
-                return TypeConstants.EmptyTask;
+                await HostContext.RaiseAndHandleUncaughtException(httpReq, httpRes, operationName, ex);
             }
             catch (Exception writeErrorEx)
             {
                 //Exception in writing to response should not hide the original exception
                 Log.Info("Failed to write error to response: {0}", writeErrorEx);
                 //rethrow the original exception
-                return ex.AsTaskException();
+                throw ex;
             }
             finally
             {

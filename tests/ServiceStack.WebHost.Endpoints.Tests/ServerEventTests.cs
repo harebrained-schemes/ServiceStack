@@ -148,7 +148,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
     public class ServerEventsAppHost : AppSelfHostBase
     {
         public ServerEventsAppHost()
-            : base(typeof(ServerEventsAppHost).Name, typeof(ServerEventsAppHost).GetAssembly()) { }
+            : base(typeof(ServerEventsAppHost).Name, typeof(ServerEventsAppHost).Assembly) { }
 
         public bool UseRedisServerEvents { get; set; }
         public bool LimitToAuthenticatedUsers { get; set; }
@@ -191,7 +191,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
     }
     
-    [Explicit("Unnecessary suite of tests")]
+    [Ignore("Unnecessary suite of tests")]
     [TestFixture]
     public class MemoryServerEventsWithNewlineOnPublishTests : ServerEventsTests
     {
@@ -222,7 +222,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
     }
 
-    [Explicit("Hangs in new build server")]
+    [Ignore("Hangs in new build server")]
     [TestFixture]
     public class RedisServerEventsTests : ServerEventsTests
     {
@@ -1300,7 +1300,16 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                 {
                     ThreadPool.QueueUserWorkItem(_ => client.Start());
                 });
-                Thread.Sleep(100);
+
+                //.NET Core can have long delay
+                var wait = 10;
+                while (wait++ < 50)
+                {
+                    if (client.TimesStarted == 3)
+                        break;
+                    Thread.Sleep(100);
+                }
+
                 Assert.That(client.TimesStarted, Is.EqualTo(3));
             }
         }

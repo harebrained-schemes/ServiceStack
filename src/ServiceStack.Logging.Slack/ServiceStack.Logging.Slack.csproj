@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net45</TargetFramework>
+    <TargetFrameworks>net45;netstandard2.0</TargetFrameworks>
     <AssemblyName>ServiceStack.Logging.Slack</AssemblyName>
     <PackageId>ServiceStack.Logging.Slack</PackageId>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
@@ -21,17 +21,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="..\..\lib\pcl\ServiceStack.Interfaces.dll" />
+    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
   </ItemGroup>
 
   <PropertyGroup Condition=" '$(TargetFramework)' == 'net45' ">
     <DefineConstants>$(DefineConstants);NET45</DefineConstants>
+    <SignAssembly>True</SignAssembly>
+    <DelaySign>False</DelaySign>
+    <AssemblyOriginatorKeyFile>../servicestack.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
     <Reference Include="System" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="..\..\lib\net45\ServiceStack.Text.dll" />
+  </ItemGroup>
+
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+    <DefineConstants>$(DefineConstants);NETSTANDARD2_0</DefineConstants>
+  </PropertyGroup>
+  
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Text.dll" />
   </ItemGroup>
 
 </Project>

@@ -7,7 +7,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
      * Leave commented out - this pollutes and causes many failures in other tests
      */
 
-    //[Explicit("This isn't supported at the moment.")]
+    //[Ignore("This isn't supported at the moment.")]
     //public class SharedDtoTests
     //{
     //    [Route("/shareddto")]
@@ -40,7 +40,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
     //    {
 
     //        public AppHost()
-    //            : base("Shared dto tests", typeof(Service1).GetAssembly()) { }
+    //            : base("Shared dto tests", typeof(Service1).Assembly) { }
 
     //        public override void Configure(Container container)
     //        {

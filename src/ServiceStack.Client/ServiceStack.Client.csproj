@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>netstandard1.6</TargetFrameworks>
+    <TargetFrameworks>net45;netstandard2.0</TargetFrameworks>
     <AssemblyName>ServiceStack.Client</AssemblyName>
     <PackageId>ServiceStack.Client</PackageId>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
@@ -20,10 +21,6 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="MSBuild.Sdk.Extras" Version="1.0.1" PrivateAssets="all" />
-  </ItemGroup>
-
   <ItemGroup Condition=" '$(Configuration)' == 'Debug' ">
     <Compile Include="..\..\ServiceStack.Client\**\*.cs" Exclude="bin\**;obj\**;**\*.xproj;packages\**" />
   </ItemGroup>
@@ -32,8 +29,15 @@
     <Compile Include="..\..\ServiceStack.Client\**\*.cs" Exclude="bin\**;obj\**;**\*.xproj;packages\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
+  </ItemGroup>
+
   <PropertyGroup Condition=" '$(TargetFramework)' == 'net45' ">
     <DefineConstants>$(DefineConstants);NET45</DefineConstants>
+    <SignAssembly>True</SignAssembly>
+    <DelaySign>False</DelaySign>
+    <AssemblyOriginatorKeyFile>../servicestack.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
@@ -59,13 +63,17 @@
 
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard1.6' ">
     <DefineConstants>$(DefineConstants);NETSTANDARD1_6</DefineConstants>
+    <Reference Include="..\..\lib\net45\ServiceStack.Text.dll" />
+  </ItemGroup>
+
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+    <DefineConstants>$(DefineConstants);NETSTANDARD2_0</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard1.6' ">
-    <PackageReference Include="Microsoft.NETCore.Portable.Compatibility" Version="1.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Primitives" Version="1.1.1" />
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+    <PackageReference Include="Microsoft.Extensions.Primitives" Version="2.0.0" />
     <PackageReference Include="System.Net.Requests" Version="4.3.0" />
-    <PackageReference Include="System.ServiceModel.Primitives" Version="4.3.0" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.4.0" />
     <PackageReference Include="System.Xml.XmlSerializer" Version="4.3.0" />
     <PackageReference Include="System.Collections.Specialized" Version="4.3.0" />
     <ProjectReference Include="..\..\..\ServiceStack.Text\src\ServiceStack.Text\ServiceStack.Text.csproj" />
@@ -116,4 +124,7 @@
   <PropertyGroup>
     <DebugType>Full</DebugType>
   </PropertyGroup>
+    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Text.dll" />
+  </ItemGroup>
+
 </Project>
