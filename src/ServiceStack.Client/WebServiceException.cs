@@ -10,9 +10,7 @@ using ServiceStack.Text;
 
 namespace ServiceStack
 {
-#if !(NETFX_CORE || WP || SL5 || PCL || NETSTANDARD1_1 || NETSTANDARD1_6)
     [Serializable]
-#endif
     public class WebServiceException
         : Exception, IHasStatusCode, IHasStatusDescription, IResponseStatusConvertible
     {
@@ -38,23 +36,30 @@ namespace ServiceStack
 
         private void ParseResponseDto()
         {
-            string responseStatus;
-            if (!TryGetResponseStatusFromResponseDto(out responseStatus))
+            try
             {
-                if (!TryGetResponseStatusFromResponseBody(out responseStatus))
+                if (!TryGetResponseStatusFromResponseDto(out var responseStatus))
                 {
-                    errorCode = StatusDescription;
-                    return;
+                    if (!TryGetResponseStatusFromResponseBody(out responseStatus))
+                    {
+                        errorCode = StatusDescription;
+                        return;
+                    }
                 }
+
+                var rsMap = responseStatus.FromJsv<Dictionary<string, string>>();
+                if (rsMap == null) return;
+
+                rsMap = new Dictionary<string, string>(rsMap, PclExport.Instance.InvariantComparerIgnoreCase);
+                rsMap.TryGetValue("ErrorCode", out errorCode);
+                rsMap.TryGetValue("Message", out errorMessage);
+                rsMap.TryGetValue("StackTrace", out serverStackTrace);
             }
-
-            var rsMap = responseStatus.FromJsv<Dictionary<string, string>>();
-            if (rsMap == null) return;
-
-            rsMap = new Dictionary<string, string>(rsMap, PclExport.Instance.InvariantComparerIgnoreCase);
-            rsMap.TryGetValue("ErrorCode", out errorCode);
-            rsMap.TryGetValue("Message", out errorMessage);
-            rsMap.TryGetValue("StackTrace", out serverStackTrace);
+            catch (Exception ex)
+            {
+                if (log.IsDebugEnabled)
+                    log.Debug($"Could not parse Error ResponseDto {ResponseDto?.GetType().Name}", ex);
+            }        
         }
 
         private bool TryGetResponseStatusFromResponseDto(out string responseStatus)
@@ -137,11 +142,10 @@ namespace ServiceStack
                 if (this.ResponseDto == null)
                     return null;
 
-                var hasResponseStatus = this.ResponseDto as IHasResponseStatus;
-                if (hasResponseStatus != null)
+                if (this.ResponseDto is IHasResponseStatus hasResponseStatus)
                     return hasResponseStatus.ResponseStatus;
 
-                var propertyInfo = this.ResponseDto.GetType().GetPropertyInfo("ResponseStatus");
+                var propertyInfo = this.ResponseDto.GetType().GetProperty("ResponseStatus");
                 return propertyInfo?.GetProperty(this.ResponseDto) as ResponseStatus;
             }
         }

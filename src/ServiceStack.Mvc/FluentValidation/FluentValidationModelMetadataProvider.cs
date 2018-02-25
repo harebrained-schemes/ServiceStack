@@ -1,4 +1,4 @@
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
 #region License
 // Copyright (c) Jeremy Skinner (http://www.jeremyskinner.co.uk)
 // 
@@ -164,6 +164,8 @@ namespace FluentValidation.Mvc {
         }
 
         public bool IsAsync { get; }
+
+        Func<PropertyValidatorContext, object> IPropertyValidator.CustomStateProvider { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
     }
 }
 

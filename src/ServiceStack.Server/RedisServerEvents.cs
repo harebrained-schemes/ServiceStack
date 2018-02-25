@@ -17,38 +17,38 @@ namespace ServiceStack
 
         public TimeSpan Timeout
         {
-            get { return local.IdleTimeout; }
-            set { local.IdleTimeout = value; }
+            get => local.IdleTimeout;
+            set => local.IdleTimeout = value;
         }
 
         public TimeSpan HouseKeepingInterval
         {
-            get { return local.HouseKeepingInterval; }
-            set { local.HouseKeepingInterval = value; }
+            get => local.HouseKeepingInterval;
+            set => local.HouseKeepingInterval = value;
         }
 
         public Action<IEventSubscription> OnSubscribe
         {
-            get { return local.OnSubscribe; }
-            set { local.OnSubscribe = value; }
+            get => local.OnSubscribe;
+            set => local.OnSubscribe = value;
         }
 
         public Action<IEventSubscription> OnUnsubscribe
         {
-            get { return local.OnUnsubscribe; }
-            set { local.OnUnsubscribe = value; }
+            get => local.OnUnsubscribe;
+            set => local.OnUnsubscribe = value;
         }
 
         public bool NotifyChannelOfSubscriptions
         {
-            get { return local.NotifyChannelOfSubscriptions; }
-            set { local.NotifyChannelOfSubscriptions = value; }
+            get => local.NotifyChannelOfSubscriptions;
+            set => local.NotifyChannelOfSubscriptions = value;
         }
 
         public TimeSpan? WaitBeforeNextRestart
         {
-            get { return RedisPubSub.WaitBeforeNextRestart; }
-            set { RedisPubSub.WaitBeforeNextRestart = value; }
+            get => RedisPubSub.WaitBeforeNextRestart;
+            set => RedisPubSub.WaitBeforeNextRestart = value;
         }
 
         public static string Topic = "sse:topic";
@@ -87,7 +87,7 @@ namespace ServiceStack
             };
 
             var appHost = HostContext.AppHost;
-            var feature = appHost != null ? appHost.GetPlugin<ServerEventsFeature>() : null;
+            var feature = appHost?.GetPlugin<ServerEventsFeature>();
             if (feature != null)
             {
                 Timeout = feature.IdleTimeout;
@@ -225,9 +225,9 @@ namespace ServiceStack
             NotifyRedis("notify.username." + userName, selector, message, channel);
         }
 
-        public void NotifySession(string sspid, string selector, object message, string channel = null)
+        public void NotifySession(string sessionId, string selector, object message, string channel = null)
         {
-            NotifyRedis("notify.session." + sspid, selector, message, channel);
+            NotifyRedis("notify.session." + sessionId, selector, message, channel);
         }
 
         public SubscriptionInfo GetSubscriptionInfo(string id)
@@ -372,7 +372,7 @@ namespace ServiceStack
                 var channelSetKeys = redis.ScanAllKeys(pattern: RedisIndex.ChannelSet.Fmt("*"));
                 foreach (var channelSetKey in channelSetKeys)
                 {
-                    var channelIds = redis.GetAllItemsFromSet(RedisIndex.ChannelSet.Fmt(channelSetKey));
+                    var channelIds = redis.GetAllItemsFromSet(channelSetKey);
                     foreach (var channelId in channelIds)
                     {
                         ids.Add(channelId);
@@ -396,7 +396,7 @@ namespace ServiceStack
                 var channelSetKeys = redis.ScanAllKeys(pattern: RedisIndex.ChannelSet.Fmt("*"));
                 foreach (var channelSetKey in channelSetKeys)
                 {
-                    var channelIds = redis.GetAllItemsFromSet(RedisIndex.ChannelSet.Fmt(channelSetKey));
+                    var channelIds = redis.GetAllItemsFromSet(channelSetKey);
                     foreach (var channelId in channelIds)
                     {
                         ids.Add(channelId);
@@ -458,7 +458,7 @@ namespace ServiceStack
         {
             using (var redis = clientsManager.GetClient())
             {
-                var json = message != null ? message.ToJson() : null;
+                var json = message?.ToJson();
                 var sb = StringBuilderCache.Allocate().Append(key);
 
                 if (selector != null)
@@ -586,11 +586,9 @@ namespace ServiceStack
                 Log.Warn("Error trying to remove local.Subcriptions during Dispose()...", ex);
             }
 
-            if (RedisPubSub != null)
-                RedisPubSub.Dispose();
+            RedisPubSub?.Dispose();
 
-            if (local != null)
-                local.Dispose();
+            local?.Dispose();
 
             RedisPubSub = null;
             local = null;

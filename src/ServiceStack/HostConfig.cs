@@ -4,13 +4,14 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
-using MarkdownSharp;
+using ServiceStack.Auth;
 using ServiceStack.Host;
 using ServiceStack.Logging;
-using ServiceStack.Markdown;
 using ServiceStack.Metadata;
 using ServiceStack.Text;
+using ServiceStack.Web;
 
 namespace ServiceStack
 {
@@ -36,7 +37,6 @@ namespace ServiceStack
                 EmbeddedResourceSources = new List<Assembly>(),
                 EmbeddedResourceBaseTypes = new[] { HostContext.AppHost.GetType(), typeof(Service) }.ToList(),
                 EmbeddedResourceTreatAsFiles = new HashSet<string>(),
-                LogFactory = new NullLogFactory(),
                 EnableAccessRestrictions = true,
                 WebHostPhysicalPath = "~".MapServerPath(),
                 HandlerFactoryPath = ServiceStackPath,
@@ -63,6 +63,26 @@ namespace ServiceStack
                     { "Vary", "Accept" },
                     { "X-Powered-By", Env.ServerUserAgent },
                 },
+                IsMobileRegex = new Regex("Mobile|iP(hone|od|ad)|Android|BlackBerry|IEMobile|Kindle|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune", RegexOptions.Compiled),
+                RequestRules = new Dictionary<string, Func<IHttpRequest, bool>> {
+                    {"AcceptsHtml", req => req.Accept?.IndexOf(MimeTypes.Html, StringComparison.Ordinal) >= 0 },
+                    {"AcceptsJson", req => req.Accept?.IndexOf(MimeTypes.Json, StringComparison.Ordinal) >= 0 },
+                    {"AcceptsXml", req => req.Accept?.IndexOf(MimeTypes.Xml, StringComparison.Ordinal) >= 0 },
+                    {"AcceptsJsv", req => req.Accept?.IndexOf(MimeTypes.Jsv, StringComparison.Ordinal) >= 0 },
+                    {"AcceptsCsv", req => req.Accept?.IndexOf(MimeTypes.Csv, StringComparison.Ordinal) >= 0 },
+                    {"IsAuthenticated", req => req.IsAuthenticated() },
+                    {"IsMobile", req => Instance.IsMobileRegex.IsMatch(req.UserAgent) },
+                    {"{int}/**", req => int.TryParse(req.PathInfo.Substring(1).LeftPart('/'), out _) },
+                    {"path/{int}/**", req => {
+                        var afterFirst = req.PathInfo.Substring(1).RightPart('/');
+                        return !string.IsNullOrEmpty(afterFirst) && int.TryParse(afterFirst.LeftPart('/'), out _);
+                    }},
+                    {"**/{int}", req => int.TryParse(req.PathInfo.LastRightPart('/'), out _) },
+                    {"**/{int}/path", req => {
+                        var beforeLast = req.PathInfo.LastLeftPart('/');
+                        return !string.IsNullOrEmpty(beforeLast) && int.TryParse(beforeLast.LastRightPart('/'), out _);
+                    }},
+                },
                 IgnoreFormatsInMetadata = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
                 },
@@ -86,9 +106,6 @@ namespace ServiceStack
                 ReturnsInnerException = true,
                 DisposeDependenciesAfterUse = true,
                 LogUnobservedTaskExceptions = true,
-                MarkdownOptions = new MarkdownOptions(),
-                MarkdownBaseType = typeof(MarkdownViewBase),
-                MarkdownGlobalHelpers = new Dictionary<string, Type>(),
                 HtmlReplaceTokens = new Dictionary<string, string>(),
                 AddMaxAgeForStaticMimeTypes = new Dictionary<string, TimeSpan> {
                     { "image/gif", TimeSpan.FromHours(1) },
@@ -102,6 +119,8 @@ namespace ServiceStack
                     RouteNamingConvention.WithMatchingPropertyNames
                 },
                 MapExceptionToStatusCode = new Dictionary<Type, int>(),
+                UseSaltedHash = false,
+                FallbackPasswordHashers = new List<IPasswordHasher>(),
                 OnlySendSessionCookiesSecurely = false,
                 AllowSessionIdsInHttpParams = false,
                 AllowSessionCookies = true,
@@ -123,7 +142,7 @@ namespace ServiceStack
                     "jspm_packages/",
                     "bower_components/",
                     "wwwroot_build/",
-#if !NETSTANDARD1_6 
+#if !NETSTANDARD2_0 
                     "wwwroot/", //Need to allow VirtualFiles access from ContentRoot Folder
 #endif
                 },
@@ -142,14 +161,14 @@ namespace ServiceStack
                 },
                 FallbackRestPath = null,
                 UseHttpsLinks = false,
-#if !NETSTANDARD1_6
+                UseJsObject = true,
+#if !NETSTANDARD2_0
                 UseCamelCase = false,
                 EnableOptimizations = false,
 #else
                 UseCamelCase = true,
                 EnableOptimizations = true,
 #endif
-                DisableChunkedEncoding = false
             };
 
             Platform.Instance.InitHostConifg(config);
@@ -171,7 +190,6 @@ namespace ServiceStack
             this.ServiceEndpointsMetadataConfig = instance.ServiceEndpointsMetadataConfig;
             this.SoapServiceName = instance.SoapServiceName;
             this.XmlWriterSettings = instance.XmlWriterSettings;
-            this.LogFactory = instance.LogFactory;
             this.EnableAccessRestrictions = instance.EnableAccessRestrictions;
             this.WebHostUrl = instance.WebHostUrl;
             this.WebHostPhysicalPath = instance.WebHostPhysicalPath;
@@ -185,6 +203,8 @@ namespace ServiceStack
             this.DebugMode = instance.DebugMode;
             this.StrictMode = instance.StrictMode;
             this.DefaultDocuments = instance.DefaultDocuments;
+            this.IsMobileRegex = instance.IsMobileRegex;
+            this.RequestRules = instance.RequestRules;
             this.GlobalResponseHeaders = instance.GlobalResponseHeaders;
             this.IgnoreFormatsInMetadata = instance.IgnoreFormatsInMetadata;
             this.AllowFileExtensions = instance.AllowFileExtensions;
@@ -197,14 +217,13 @@ namespace ServiceStack
             this.DisposeDependenciesAfterUse = instance.DisposeDependenciesAfterUse;
             this.LogUnobservedTaskExceptions = instance.LogUnobservedTaskExceptions;
             this.ReturnsInnerException = instance.ReturnsInnerException;
-            this.MarkdownOptions = instance.MarkdownOptions;
-            this.MarkdownBaseType = instance.MarkdownBaseType;
-            this.MarkdownGlobalHelpers = instance.MarkdownGlobalHelpers;
             this.HtmlReplaceTokens = instance.HtmlReplaceTokens;
             this.AddMaxAgeForStaticMimeTypes = instance.AddMaxAgeForStaticMimeTypes;
             this.AppendUtf8CharsetOnContentTypes = instance.AppendUtf8CharsetOnContentTypes;
             this.RouteNamingConventions = instance.RouteNamingConventions;
             this.MapExceptionToStatusCode = instance.MapExceptionToStatusCode;
+            this.UseSaltedHash = instance.UseSaltedHash;
+            this.FallbackPasswordHashers = instance.FallbackPasswordHashers;
             this.OnlySendSessionCookiesSecurely = instance.OnlySendSessionCookiesSecurely;
             this.AllowSessionIdsInHttpParams = instance.AllowSessionIdsInHttpParams;
             this.AllowSessionCookies = instance.AllowSessionCookies;
@@ -229,8 +248,8 @@ namespace ServiceStack
             this.AdminAuthSecret = instance.AdminAuthSecret;
             this.UseHttpsLinks = instance.UseHttpsLinks;
             this.UseCamelCase = instance.UseCamelCase;
+            this.UseJsObject = instance.UseJsObject;
             this.EnableOptimizations = instance.EnableOptimizations;
-            this.DisableChunkedEncoding = instance.DisableChunkedEncoding;
         }
 
         public string WsdlServiceNamespace { get; set; }
@@ -285,9 +304,10 @@ namespace ServiceStack
         public ServiceEndpointsMetadataConfig ServiceEndpointsMetadataConfig { get; set; }
         public string SoapServiceName { get; set; }
         public XmlWriterSettings XmlWriterSettings { get; set; }
-        public ILogFactory LogFactory { get; set; }
         public bool EnableAccessRestrictions { get; set; }
         public bool UseBclJsonSerializers { get; set; }
+        public Regex IsMobileRegex { get; set; }
+        public Dictionary<string, Func<IHttpRequest, bool>> RequestRules { get; set; }
         public Dictionary<string, string> GlobalResponseHeaders { get; set; }
         public Feature EnableFeatures { get; set; }
         public bool ReturnsInnerException { get; set; }
@@ -295,9 +315,13 @@ namespace ServiceStack
         public bool DisposeDependenciesAfterUse { get; set; }
         public bool LogUnobservedTaskExceptions { get; set; }
 
-        public MarkdownOptions MarkdownOptions { get; set; }
-        public Type MarkdownBaseType { get; set; }
-        public Dictionary<string, Type> MarkdownGlobalHelpers { get; set; }
+        [Obsolete("Use LogManager.LogFactory")]
+        public ILogFactory LogFactory
+        {
+            get => LogManager.LogFactory;
+            set => LogManager.LogFactory = value;
+        }
+
         public Dictionary<string, string> HtmlReplaceTokens { get; set; }
 
         public HashSet<string> AppendUtf8CharsetOnContentTypes { get; set; }
@@ -307,6 +331,22 @@ namespace ServiceStack
         public List<RouteNamingConventionDelegate> RouteNamingConventions { get; set; }
 
         public Dictionary<Type, int> MapExceptionToStatusCode { get; set; }
+
+        /// <summary>
+        /// If enabled reverts to persist password hashes using the original SHA256 SaltedHash implementation. 
+        /// By default ServiceStack uses the more secure ASP.NET Identity v3 PBKDF2 with HMAC-SHA256 implementation.
+        /// 
+        /// New Users will have their passwords persisted with the specified implementation, likewise existing users will have their passwords re-hased
+        /// to use the current registered IPasswordHasher.
+        /// </summary>
+        public bool UseSaltedHash { get; set; }
+
+        /// <summary>
+        /// Older Password Hashers that were previously used to hash passwords. Failed password matches check to see if the password was hashed with 
+        /// any of the registered FallbackPasswordHashers, if true the password attempt will succeed and password will get re-hashed with 
+        /// the current registered IPasswordHasher.
+        /// </summary>
+        public List<IPasswordHasher> FallbackPasswordHashers { get; private set; }
 
         public bool OnlySendSessionCookiesSecurely { get; set; }
         public bool AllowSessionIdsInHttpParams { get; set; }
@@ -333,10 +373,8 @@ namespace ServiceStack
         public bool UseHttpsLinks { get; set; }
 
         public bool UseCamelCase { get; set; }
+        public bool UseJsObject { get; set; }
         public bool EnableOptimizations { get; set; }
-
-        //Disables chunked encoding on Kestrel Server
-        public bool DisableChunkedEncoding { get; set; }
 
         public string AdminAuthSecret { get; set; }
 

@@ -60,7 +60,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
     public class PartialContentAppHost : AppHostHttpListenerBase
     {
-        public PartialContentAppHost() : base(typeof(PartialFile).Name, typeof(PartialFile).GetAssembly()) { }
+        public PartialContentAppHost() : base(typeof(PartialFile).Name, typeof(PartialFile).Assembly) { }
         public override void Configure(Container container) {}
     }
 
@@ -356,7 +356,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
 
         [Test]
-        [Explicit("Helps debugging when you need to find out WTF is going on")]
+        [Ignore("Helps debugging when you need to find out WTF is going on")]
         public void Run_for_30secs()
         {
             Thread.Sleep(30000);

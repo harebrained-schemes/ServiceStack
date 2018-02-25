@@ -1,4 +1,4 @@
-﻿#if !NETSTANDARD1_6
+﻿#if !NETSTANDARD2_0
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,10 +55,9 @@ namespace ServiceStack.Mvc.MiniProfiler
         public override void OnActionExecuted(ActionExecutedContext filterContext)
         {
             base.OnActionExecuted(filterContext);
-            var stack = HttpContext.Current.Items[stackKey] as Stack<IDisposable>;
-            if (stack != null && stack.Count > 0)
+            if (HttpContext.Current.Items[stackKey] is Stack<IDisposable> stack && stack.Count > 0)
             {
-                stack.Pop().Dispose();
+                stack.Pop()?.Dispose();
             }
         }
     }

@@ -1,7 +1,7 @@
 ﻿//Copyright (c) ServiceStack, Inc. All Rights Reserved.
 //License: https://raw.github.com/ServiceStack/ServiceStack/master/license.txt
 
-#if NETSTANDARD1_1 || NETSTANDARD1_6
+#if NETSTANDARD2_0
 using System;
 using System.Collections.Specialized;
 using System.IO;
@@ -56,7 +56,7 @@ namespace ServiceStack
         static readonly Action<HttpWebRequest, DateTime> SetIfModifiedSinceDelegate = 
                     (Action<HttpWebRequest, DateTime>)typeof(HttpWebRequest)
                         .GetProperty("IfModifiedSince")
-                        ?.SetMethod()
+                        ?.GetSetMethod(nonPublic:true)
                         ?.CreateDelegate(typeof(Action<HttpWebRequest, DateTime>));
 
         public static PclExportClient Configure()
@@ -66,20 +66,16 @@ namespace ServiceStack
             return Provider;
         }
 
-        public override INameValueCollection NewNameValueCollection()
-        {
-            return new NameValueCollectionWrapper(new NameValueCollection());
-        }
-
         public override void SetIfModifiedSince(HttpWebRequest webReq, DateTime lastModified)
         {
             //support for Xamarin and .NET platform
             if (SetIfModifiedSinceDelegate != null)
             {
                 SetIfModifiedSinceDelegate(webReq, lastModified);
-            } else
+            }
+            else
             {
-#if NETSTANDARD1_6
+#if NETSTANDARD2_0
                 if (lastModified == DateTime.MinValue)
                     webReq.Headers.Remove(HttpHeaders.IfModifiedSince);
                 else

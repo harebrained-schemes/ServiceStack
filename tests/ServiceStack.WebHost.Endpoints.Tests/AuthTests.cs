@@ -239,14 +239,14 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
     public class CustomAuthenticateAttribute : AuthenticateAttribute
     {
-        public override void Execute(IRequest req, IResponse res, object requestDto)
+        public override Task ExecuteAsync(IRequest req, IResponse res, object requestDto)
         {
             //Need to run SessionFeature filter since its not executed before this attribute (Priority -100)
             SessionFeature.AddSessionIdToRequestFilter(req, res, null); //Required to get req.GetSessionId()
 
             req.Items["TriedMyOwnAuthFirst"] = true; // let's simulate some sort of auth _before_ relaying to base class.
 
-            base.Execute(req, res, requestDto);
+            return base.ExecuteAsync(req, res, requestDto);
         }
     }
 
@@ -302,7 +302,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         private readonly Action<Container> configureFn;
 
         public AuthAppHost(string webHostUrl, Action<Container> configureFn = null)
-            : base("Validation Tests", typeof(CustomerService).GetAssembly())
+            : base("Validation Tests", typeof(CustomerService).Assembly)
         {
             this.webHostUrl = webHostUrl;
             this.configureFn = configureFn;
@@ -345,9 +345,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
         private void CreateUser(int id, string username, string email, string password, List<string> roles = null, List<string> permissions = null)
         {
-            string hash;
-            string salt;
-            new SaltedHash().GetHashAndSaltString(password, out hash, out salt);
+            new SaltedHash().GetHashAndSaltString(password, out var hash, out var salt);
 
             userRep.CreateUserAuth(new UserAuth
             {
@@ -946,9 +944,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
 
         [Test]
-#if NETCORE
-        [Ignore("Temporary disabled on .NET Core to fix build on CI")]
-#endif
         public void Html_clients_receive_redirect_to_login_page_when_accessing_unauthenticated()
         {
             var client = (ServiceClientBase)GetHtmlClient();
@@ -967,7 +962,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             {
 #if NETCORE
                 //AllowAutoRedirect=false is not implemented in .NET Core and throws NotFound exception
-                if (ex.StatusCode == (int)HttpStatusCode.NotFound)
+                if (ex.StatusCode == (int)HttpStatusCode.Found)
                     return;
 #endif
                 throw;
@@ -979,9 +974,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
 
         [Test]
-#if NETCORE
-        [Ignore("Temporary disabled on .NET Core to fix build on CI")]
-#endif
         public void Html_clients_receive_secured_url_attempt_in_login_page_redirect_query_string()
         {
             var client = (ServiceClientBase)GetHtmlClient();
@@ -1000,7 +992,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             {
 #if NETCORE
                 //AllowAutoRedirect=false is not implemented in .NET Core and throws NotFound exception
-                if (ex.StatusCode == (int)HttpStatusCode.NotFound)
+                if (ex.StatusCode == (int)HttpStatusCode.Found)
                     return;
 #endif
                 throw;
@@ -1022,9 +1014,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
 
         [Test]
-#if NETCORE
-        [Ignore("Temporary disabled on .NET Core to fix build on CI")]
-#endif
         public void Html_clients_receive_secured_url_including_query_string_within_login_page_redirect_query_string()
         {
             var client = (ServiceClientBase)GetHtmlClient();
@@ -1044,7 +1033,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             {
 #if NETCORE
                 //AllowAutoRedirect=false is not implemented in .NET Core and throws NotFound exception
-                if (ex.StatusCode == (int)HttpStatusCode.NotFound)
+                if (ex.StatusCode == (int)HttpStatusCode.Found)
                     return;
 #endif
                 throw;
@@ -1086,7 +1075,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             {
 #if NETCORE
                 //AllowAutoRedirect=false is not implemented in .NET Core and throws NotFound exception
-                if (ex.StatusCode == (int)HttpStatusCode.NotFound)
+                if (ex.StatusCode == (int)HttpStatusCode.Redirect)
                     return;
 #endif
                 throw;

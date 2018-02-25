@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using ServiceStack.Html;
 using ServiceStack.Web;
 
@@ -7,7 +8,7 @@ namespace ServiceStack
     /// <summary>
     /// Cache the Response of a Service
     /// </summary>
-    public class CacheResponseAttribute : RequestFilterAttribute
+    public class CacheResponseAttribute : RequestFilterAsyncAttribute
     {
         /// <summary>
         /// Cache expiry in seconds
@@ -54,7 +55,7 @@ namespace ServiceStack
             MaxAge = -1;
         }
 
-        public override void Execute(IRequest req, IResponse res, object requestDto)
+        public override async Task ExecuteAsync(IRequest req, IResponse res, object requestDto)
         {
             if (req.Verb != HttpMethods.Get && req.Verb != HttpMethods.Head)
                 return;
@@ -123,7 +124,7 @@ namespace ServiceStack
                 NoCompression = NoCompression,
             };
 
-            if (req.HandleValidCache(cacheInfo))
+            if (await req.HandleValidCache(cacheInfo))
                 return;
 
             req.Items[Keywords.CacheInfo] = cacheInfo;
@@ -137,13 +138,14 @@ namespace ServiceStack
             return "date:" + cacheInfo.CacheKey;
         }
 
-        public static bool HandleValidCache(this IRequest req, CacheInfo cacheInfo)
+        public static async Task<bool> HandleValidCache(this IRequest req, CacheInfo cacheInfo)
         {
             if (cacheInfo == null)
                 return false;
 
             var res = req.Response;
             var cache = cacheInfo.LocalCache ? HostContext.AppHost.GetMemoryCacheClient(req) : HostContext.AppHost.GetCacheClient(req);
+            var cacheControl = HostContext.GetPlugin<HttpCacheFeature>().BuildCacheControlHeader(cacheInfo);
 
             DateTime? lastModified = null;
 
@@ -153,6 +155,9 @@ namespace ServiceStack
                 lastModified = cache.Get<DateTime?>(cacheInfo.LastModifiedKey());
                 if (req.HasValidCache(lastModified))
                 {
+                    if (cacheControl != null)
+                        res.AddHeader(HttpHeaders.CacheControl, cacheControl);
+
                     res.EndNotModified();
                     return true;
                 }
@@ -173,7 +178,6 @@ namespace ServiceStack
                 if (cacheInfo.VaryByUser)
                     res.AddHeader(HttpHeaders.Vary, "Cookie");
 
-                var cacheControl = HostContext.GetPlugin<HttpCacheFeature>().BuildCacheControlHeader(cacheInfo);
                 if (cacheControl != null)
                     res.AddHeader(HttpHeaders.CacheControl, cacheControl);
 
@@ -183,7 +187,7 @@ namespace ServiceStack
                 if (lastModified != null)
                     res.AddHeader(HttpHeaders.LastModified, lastModified.Value.ToUniversalTime().ToString("r"));
 
-                res.WriteBytesToResponse(responseBytes, req.ResponseContentType);
+                await res.WriteBytesToResponse(responseBytes, req.ResponseContentType);
                 return true;
             }
 

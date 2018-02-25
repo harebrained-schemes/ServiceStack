@@ -74,7 +74,7 @@ namespace ServiceStack.ServiceHost.Tests.Formats_Razor
             var expectedHtml =
 @"<h1>Razor Example</h1>
 
-<h3>Hello Demis, the year is 2017</h3>
+<h3>Hello Demis, the year is 2018</h3>
 
 <p>Checkout <a href=""/Product/Details/10"">this product</a></p>
 ".NormalizeNewLines();
@@ -164,7 +164,7 @@ var message = ""Number is "" + number;
 
             var html = RazorFormat.CreateAndRenderToHtml(template, model: productArgs);
 
-            Assert.That(html, Is.StringMatching(expectedHtml.Substring(0, expectedHtml.Length - 25)));
+            Assert.That(html, Does.Match(expectedHtml.Substring(0, expectedHtml.Length - 25)));
         }
 
 
@@ -173,22 +173,22 @@ var message = ""Number is "" + number;
         {
             var template =
 @"
-@if (DateTime.Now.Year == 2017) {
-<p>If the year is 2017 then print this 
+@if (DateTime.Now.Year == 2018) {
+<p>If the year is 2018 then print this 
 multi-line text block and 
 the date: @DateTime.Now</p>
 }
 ".NormalizeNewLines();
 
             var expectedHtml =
-@"<p>If the year is 2017 then print this 
+@"<p>If the year is 2018 then print this 
 multi-line text block and 
 the date: 02/06/2013 06:42:45</p>
 ".NormalizeNewLines();
 
             var html = RazorFormat.CreateAndRenderToHtml(template, model: productArgs);
 
-            Assert.That(html, Is.StringMatching(expectedHtml.Substring(0, expectedHtml.Length - 25)));
+            Assert.That(html, Does.Match(expectedHtml.Substring(0, expectedHtml.Length - 25)));
         }
 
         [Test]

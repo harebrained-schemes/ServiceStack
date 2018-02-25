@@ -87,28 +87,34 @@ namespace ServiceStack
             Container = new Container { DefaultOwner = Owner.External };
             ServiceAssemblies = assembliesWithServices.ToList();
 
-            ContentTypes = Host.ContentTypes.Instance;
+            ContentTypes = new ContentTypes();
             RestPaths = new List<RestPath>();
             Routes = new ServiceRoutes(this);
             Metadata = new ServiceMetadata(RestPaths);
             PreRequestFilters = new List<Action<IRequest, IResponse>>();
-            RequestConverters = new List<Func<IRequest, object, object>>();
-            ResponseConverters = new List<Func<IRequest, object, object>>();
+            RequestConverters = new List<Func<IRequest, object, Task<object>>>();
+            ResponseConverters = new List<Func<IRequest, object, Task<object>>>();
             GlobalRequestFilters = new List<Action<IRequest, IResponse, object>>();
             GlobalRequestFiltersAsync = new List<Func<IRequest, IResponse, object, Task>>();
             GlobalTypedRequestFilters = new Dictionary<Type, ITypedFilter>();
             GlobalResponseFilters = new List<Action<IRequest, IResponse, object>>();
+            GlobalResponseFiltersAsync = new List<Func<IRequest, IResponse, object, Task>>();
             GlobalTypedResponseFilters = new Dictionary<Type, ITypedFilter>();
             GlobalMessageRequestFilters = new List<Action<IRequest, IResponse, object>>();
             GlobalMessageRequestFiltersAsync = new List<Func<IRequest, IResponse, object, Task>>();
             GlobalTypedMessageRequestFilters = new Dictionary<Type, ITypedFilter>();
             GlobalMessageResponseFilters = new List<Action<IRequest, IResponse, object>>();
+            GlobalMessageResponseFiltersAsync = new List<Func<IRequest, IResponse, object, Task>>();
             GlobalTypedMessageResponseFilters = new Dictionary<Type, ITypedFilter>();
             GatewayRequestFilters = new List<Action<IRequest, object>>();
+            GatewayRequestFiltersAsync = new List<Func<IRequest, object, Task>>();
             GatewayResponseFilters = new List<Action<IRequest, object>>();
+            GatewayResponseFiltersAsync = new List<Func<IRequest, object, Task>>();
             ViewEngines = new List<IViewEngine>();
             ServiceExceptionHandlers = new List<HandleServiceExceptionDelegate>();
+            ServiceExceptionHandlersAsync = new List<HandleServiceExceptionAsyncDelegate>();
             UncaughtExceptionHandlers = new List<HandleUncaughtExceptionDelegate>();
+            UncaughtExceptionHandlersAsync = new List<HandleUncaughtExceptionAsyncDelegate>();
             BeforeConfigure = new List<Action<ServiceStackHost>>();
             AfterConfigure = new List<Action<ServiceStackHost>>();
             AfterInitCallbacks = new List<Action<IAppHost>>();
@@ -118,9 +124,6 @@ namespace ServiceStack
             RawHttpHandlers = new List<Func<IHttpRequest, IHttpHandler>> {
                 ReturnRedirectHandler,
                 ReturnRequestInfoHandler,
-#if !NETSTANDARD1_6
-                ServiceStack.MiniProfiler.UI.MiniProfilerHandler.MatchesRequest,
-#endif
             };
             CatchAllHandlers = new List<HttpHandlerResolverDelegate>();
             CustomErrorHttpHandlers = new Dictionary<HttpStatusCode, IServiceStackHandler> {
@@ -133,7 +136,6 @@ namespace ServiceStack
             Plugins = new List<IPlugin> {
                 new HtmlFormat(),
                 new CsvFormat(),
-                new MarkdownFormat(),
                 new PredefinedRoutesFeature(),
                 new MetadataFeature(),
                 new NativeTypesFeature(),
@@ -147,6 +149,12 @@ namespace ServiceStack
                 typeof(UnAssignRolesService),
                 typeof(NativeTypesService),
                 typeof(PostmanService),
+                typeof(TemplateHotReloadService),
+                typeof(HotReloadFilesService),
+                typeof(TemplateApiPagesService),
+                typeof(TemplateMetadataDebugService),
+                typeof(ServerEventsSubscribersService),
+                typeof(ServerEventsUnRegisterService),
             };
 
             JsConfig.InitStatics();
@@ -190,8 +198,6 @@ namespace ServiceStack
             AbstractVirtualFileBase.ScanSkipPaths = Config.ScanSkipPaths;
             ResourceVirtualDirectory.EmbeddedResourceTreatAsFiles = Config.EmbeddedResourceTreatAsFiles;
 
-            Config.DebugMode = GetType().GetAssembly().IsDebugBuild();
-
             OnBeforeInit();
             ServiceController.Init();
 
@@ -223,11 +229,34 @@ namespace ServiceStack
 
             OnAfterInit();
 
+            PopulateArrayFilters();
+
             LogInitComplete();
 
             HttpHandlerFactory.Init();
 
             return this;
+        }
+
+        protected void PopulateArrayFilters()
+        {
+            PreRequestFiltersArray = PreRequestFilters.ToArray();
+            RequestConvertersArray = RequestConverters.ToArray();
+            ResponseConvertersArray = ResponseConverters.ToArray();
+            GlobalRequestFiltersArray = GlobalRequestFilters.ToArray();
+            GlobalRequestFiltersAsyncArray = GlobalRequestFiltersAsync.ToArray();
+            GlobalResponseFiltersArray = GlobalResponseFilters.ToArray();
+            GlobalResponseFiltersAsyncArray = GlobalResponseFiltersAsync.ToArray();
+            GlobalMessageRequestFiltersArray = GlobalMessageRequestFilters.ToArray();
+            GlobalMessageRequestFiltersAsyncArray = GlobalMessageRequestFiltersAsync.ToArray();
+            GlobalMessageResponseFiltersArray = GlobalMessageResponseFilters.ToArray();
+            GlobalMessageResponseFiltersAsyncArray = GlobalMessageResponseFiltersAsync.ToArray();
+            RawHttpHandlersArray = RawHttpHandlers.ToArray();
+            CatchAllHandlersArray = CatchAllHandlers.ToArray();
+            GatewayRequestFiltersArray = GatewayRequestFilters.ToArray();
+            GatewayRequestFiltersAsyncArray = GatewayRequestFiltersAsync.ToArray();
+            GatewayResponseFiltersArray = GatewayResponseFilters.ToArray();
+            GatewayResponseFiltersAsyncArray = GatewayResponseFiltersAsync.ToArray();
         }
 
         private void LogInitComplete()
@@ -255,12 +284,6 @@ namespace ServiceStack
             }
         }
 
-        [Obsolete("Renamed to GetVirtualFileSources")]
-        public virtual List<IVirtualPathProvider> GetVirtualPathProviders()
-        {
-            return GetVirtualFileSources();
-        }
-
         /// <summary>
         /// Gets Full Directory Path of where the app is running
         /// </summary>
@@ -273,7 +296,7 @@ namespace ServiceStack
             };
 
             pathProviders.AddRange(Config.EmbeddedResourceBaseTypes.Distinct()
-                .Map(x => new ResourceVirtualFiles(x) { LastModified = GetAssemblyLastModified(x.GetAssembly()) } ));
+                .Map(x => new ResourceVirtualFiles(x) { LastModified = GetAssemblyLastModified(x.Assembly) } ));
 
             pathProviders.AddRange(Config.EmbeddedResourceSources.Distinct()
                 .Map(x => new ResourceVirtualFiles(x) { LastModified = GetAssemblyLastModified(x) } ));
@@ -337,6 +360,7 @@ namespace ServiceStack
         /// called in <see cref="ApplyPreRequestFilters"/>.
         /// </summary>
         public List<Action<IRequest, IResponse>> PreRequestFilters { get; set; }
+        internal Action<IRequest, IResponse>[] PreRequestFiltersArray;
 
         /// <summary>
         /// Collection of RequestConverters.
@@ -347,33 +371,47 @@ namespace ServiceStack
         /// 
         /// Note one converter could influence the input for the next converter!
         /// </summary>
-        public List<Func<IRequest, object, object>> RequestConverters { get; set; }
+        public List<Func<IRequest, object, Task<object>>> RequestConverters { get; set; }
+        internal Func<IRequest, object, Task<object>>[] RequestConvertersArray;
 
         /// <summary>
         /// Collection of ResponseConverters.
         /// Can be used to convert/change Output Dto
         /// 
-        /// Called directly after response is handled, even before <see cref="ApplyResponseFilters"></see>!
+        /// Called directly after response is handled, even before <see cref="ApplyResponseFiltersAsync"></see>!
         /// </summary>
-        public List<Func<IRequest, object, object>> ResponseConverters { get; set; }
+        public List<Func<IRequest, object, Task<object>>> ResponseConverters { get; set; }
+        internal Func<IRequest, object, Task<object>>[] ResponseConvertersArray;
 
         public List<Action<IRequest, IResponse, object>> GlobalRequestFilters { get; set; }
+        internal Action<IRequest, IResponse, object>[] GlobalRequestFiltersArray;
 
         public List<Func<IRequest, IResponse, object, Task>> GlobalRequestFiltersAsync { get; set; }
+        internal Func<IRequest, IResponse, object, Task>[] GlobalRequestFiltersAsyncArray;
 
         public Dictionary<Type, ITypedFilter> GlobalTypedRequestFilters { get; set; }
 
         public List<Action<IRequest, IResponse, object>> GlobalResponseFilters { get; set; }
+        internal Action<IRequest, IResponse, object>[] GlobalResponseFiltersArray;
+
+        public List<Func<IRequest, IResponse, object, Task>> GlobalResponseFiltersAsync { get; set; }
+        internal Func<IRequest, IResponse, object, Task>[] GlobalResponseFiltersAsyncArray;
 
         public Dictionary<Type, ITypedFilter> GlobalTypedResponseFilters { get; set; }
 
         public List<Action<IRequest, IResponse, object>> GlobalMessageRequestFilters { get; }
+        internal Action<IRequest, IResponse, object>[] GlobalMessageRequestFiltersArray;
 
         public List<Func<IRequest, IResponse, object, Task>> GlobalMessageRequestFiltersAsync { get; }
+        internal Func<IRequest, IResponse, object, Task>[] GlobalMessageRequestFiltersAsyncArray;
 
         public Dictionary<Type, ITypedFilter> GlobalTypedMessageRequestFilters { get; set; }
 
         public List<Action<IRequest, IResponse, object>> GlobalMessageResponseFilters { get; }
+        internal Action<IRequest, IResponse, object>[] GlobalMessageResponseFiltersArray;
+
+        public List<Func<IRequest, IResponse, object, Task>> GlobalMessageResponseFiltersAsync { get; }
+        internal Func<IRequest, IResponse, object, Task>[] GlobalMessageResponseFiltersAsyncArray;
 
         public Dictionary<Type, ITypedFilter> GlobalTypedMessageResponseFilters { get; set; }
 
@@ -385,7 +423,11 @@ namespace ServiceStack
 
         public List<HandleServiceExceptionDelegate> ServiceExceptionHandlers { get; set; }
 
+        public List<HandleServiceExceptionAsyncDelegate> ServiceExceptionHandlersAsync { get; set; }
+
         public List<HandleUncaughtExceptionDelegate> UncaughtExceptionHandlers { get; set; }
+
+        public List<HandleUncaughtExceptionAsyncDelegate> UncaughtExceptionHandlersAsync { get; set; }
 
         public List<Action<ServiceStackHost>> BeforeConfigure { get; set; }
 
@@ -398,8 +440,10 @@ namespace ServiceStack
         public List<Action<IRequest>> OnEndRequestCallbacks { get; set; }
 
         public List<Func<IHttpRequest, IHttpHandler>> RawHttpHandlers { get; set; }
+        internal Func<IHttpRequest, IHttpHandler>[] RawHttpHandlersArray;
 
         public List<HttpHandlerResolverDelegate> CatchAllHandlers { get; set; }
+        internal HttpHandlerResolverDelegate[] CatchAllHandlersArray;
 
         public IServiceStackHandler GlobalHtmlErrorHttpHandler { get; set; }
 
@@ -423,15 +467,16 @@ namespace ServiceStack
         public List<IVirtualPathProvider> AddVirtualFileSources { get; set; }
 
         public List<Action<IRequest, object>> GatewayRequestFilters { get; set; }
+        internal Action<IRequest, object>[] GatewayRequestFiltersArray;
+
+        public List<Func<IRequest, object, Task>> GatewayRequestFiltersAsync { get; set; }
+        internal Func<IRequest, object, Task>[] GatewayRequestFiltersAsyncArray;
 
         public List<Action<IRequest, object>> GatewayResponseFilters { get; set; }
+        internal Action<IRequest, object>[] GatewayResponseFiltersArray;
 
-        [Obsolete("Renamed to VirtualFileSources")]
-        public IVirtualPathProvider VirtualPathProvider
-        {
-            get { return VirtualFileSources; }
-            set { VirtualFileSources = value; }
-        }
+        public List<Func<IRequest, object, Task>> GatewayResponseFiltersAsync { get; set; }
+        internal Func<IRequest, object, Task>[] GatewayResponseFiltersAsyncArray;
 
         /// <summary>
         /// Executed immediately before a Service is executed. Use return to change the request DTO used, must be of the same type.
@@ -452,12 +497,16 @@ namespace ServiceStack
         /// <summary>
         /// Occurs when the Service throws an Exception.
         /// </summary>
-        public virtual object OnServiceException(IRequest httpReq, object request, Exception ex)
+        public virtual async Task<object> OnServiceException(IRequest httpReq, object request, Exception ex)
         {
             object lastError = null;
             foreach (var errorHandler in ServiceExceptionHandlers)
             {
                 lastError = errorHandler(httpReq, request, ex) ?? lastError;
+            }
+            foreach (var errorHandler in ServiceExceptionHandlersAsync)
+            {
+                lastError = await errorHandler(httpReq, request, ex) ?? lastError;
             }
             return lastError;
         }
@@ -465,18 +514,19 @@ namespace ServiceStack
         /// <summary>
         /// Occurs when an exception is thrown whilst processing a request.
         /// </summary>
-        public virtual void OnUncaughtException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
+        public virtual async Task OnUncaughtException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
         {
-            if (UncaughtExceptionHandlers.Count > 0)
+            foreach (var errorHandler in UncaughtExceptionHandlers)
             {
-                foreach (var errorHandler in UncaughtExceptionHandlers)
-                {
-                    errorHandler(httpReq, httpRes, operationName, ex);
-                }
+                errorHandler(httpReq, httpRes, operationName, ex);
+            }
+            foreach (var errorHandler in UncaughtExceptionHandlersAsync)
+            {
+                await errorHandler(httpReq, httpRes, operationName, ex);
             }
         }
 
-        public virtual void HandleUncaughtException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
+        public virtual Task HandleUncaughtException(IRequest httpReq, IResponse httpRes, string operationName, Exception ex)
         {
             //Only add custom error messages to StatusDescription
             var httpError = ex as IHttpError;
@@ -485,7 +535,7 @@ namespace ServiceStack
 
             //httpRes.WriteToResponse always calls .Close in it's finally statement so 
             //if there is a problem writing to response, by now it will be closed
-            httpRes.WriteErrorToResponse(httpReq, httpReq.ResponseContentType, operationName, errorMessage, ex, statusCode);
+            return httpRes.WriteErrorToResponse(httpReq, httpReq.ResponseContentType, operationName, errorMessage, ex, statusCode);
         }
 
         public virtual void OnStartupException(Exception ex)
@@ -509,6 +559,7 @@ namespace ServiceStack
 
         public virtual void OnConfigLoad()
         {
+            Config.DebugMode = GetType().Assembly.IsDebugBuild();
         }
 
         // Config has changed
@@ -523,6 +574,7 @@ namespace ServiceStack
         public virtual void OnBeforeInit()
         {
             Container.Register<IHashProvider>(c => new SaltedHash()).ReusedWithin(ReuseScope.None);
+            Container.Register<IPasswordHasher>(c => new PasswordHasher());
         }
 
         //After configure called
@@ -536,31 +588,32 @@ namespace ServiceStack
                 {
                     config.IgnoreFormatsInMetadata.Add("xml");
                     Config.PreferredContentTypes.Remove(MimeTypes.Xml);
+                    ContentTypes.Remove(MimeTypes.Xml);
                 }
                 if ((Feature.Json & config.EnableFeatures) != Feature.Json)
                 {
                     config.IgnoreFormatsInMetadata.Add("json");
                     Config.PreferredContentTypes.Remove(MimeTypes.Json);
+                    ContentTypes.Remove(MimeTypes.Json);
                 }
                 if ((Feature.Jsv & config.EnableFeatures) != Feature.Jsv)
                 {
                     config.IgnoreFormatsInMetadata.Add("jsv");
                     Config.PreferredContentTypes.Remove(MimeTypes.Jsv);
+                    ContentTypes.Remove(MimeTypes.Jsv);
                 }
                 if ((Feature.Csv & config.EnableFeatures) != Feature.Csv)
                 {
                     config.IgnoreFormatsInMetadata.Add("csv");
                     Config.PreferredContentTypes.Remove(MimeTypes.Csv);
+                    ContentTypes.Remove(MimeTypes.Csv);
                 }
                 if ((Feature.Html & config.EnableFeatures) != Feature.Html)
                 {
                     config.IgnoreFormatsInMetadata.Add("html");
                     Config.PreferredContentTypes.Remove(MimeTypes.Html);
+                    ContentTypes.Remove(MimeTypes.Html);
                 }
-                if ((Feature.Soap11 & config.EnableFeatures) != Feature.Soap11)
-                    config.IgnoreFormatsInMetadata.Add("soap11");
-                if ((Feature.Soap12 & config.EnableFeatures) != Feature.Soap12)
-                    config.IgnoreFormatsInMetadata.Add("soap12");
             }
 
             if ((Feature.Html & config.EnableFeatures) != Feature.Html)
@@ -568,9 +621,6 @@ namespace ServiceStack
 
             if ((Feature.Csv & config.EnableFeatures) != Feature.Csv)
                 Plugins.RemoveAll(x => x is CsvFormat);
-
-            if ((Feature.Markdown & config.EnableFeatures) != Feature.Markdown)
-                Plugins.RemoveAll(x => x is MarkdownFormat);
 
             if ((Feature.PredefinedRoutes & config.EnableFeatures) != Feature.PredefinedRoutes)
                 Plugins.RemoveAll(x => x is PredefinedRoutesFeature);
@@ -607,7 +657,7 @@ namespace ServiceStack
             var specifiedContentType = config.DefaultContentType; //Before plugins loaded
 
             var plugins = Plugins.ToArray();
-            delayLoadPlugin = true;
+            delayedLoadPlugin = true;
             LoadPluginsInternal(plugins);
 
             AfterPluginsLoaded(specifiedContentType);
@@ -623,11 +673,11 @@ namespace ServiceStack
                 if (Container.Exists<IRedisClientsManager>())
                     Container.Register(c => c.Resolve<IRedisClientsManager>().GetCacheClient());
                 else
-                    Container.Register<ICacheClient>(ServiceExtensions.DefaultCache);
+                    Container.Register<ICacheClient>(DefaultCache);
             }
 
             if (!Container.Exists<MemoryCacheClient>())
-                Container.Register(ServiceExtensions.DefaultCache);
+                Container.Register(DefaultCache);
 
             if (Container.Exists<IMessageService>()
                 && !Container.Exists<IMessageFactory>())
@@ -640,6 +690,9 @@ namespace ServiceStack
             {
                 Container.Register<IAuthRepository>(c => c.Resolve<IUserAuthRepository>());
             }
+
+            if (Config.UseJsObject)
+                JS.Configure();
 
             if (config.LogUnobservedTaskExceptions)
             {
@@ -670,8 +723,7 @@ namespace ServiceStack
             //Some plugins need to initialize before other plugins are registered.
             foreach (var plugin in Plugins)
             {
-                var preInitPlugin = plugin as IPreInitPlugin;
-                if (preInitPlugin != null)
+                if (plugin is IPreInitPlugin preInitPlugin)
                 {
                     try
                     {
@@ -699,8 +751,7 @@ namespace ServiceStack
 
             foreach (var plugin in Plugins)
             {
-                var preInitPlugin = plugin as IPostInitPlugin;
-                if (preInitPlugin != null)
+                if (plugin is IPostInitPlugin preInitPlugin)
                 {
                     try
                     {
@@ -720,8 +771,7 @@ namespace ServiceStack
         {
             try
             {
-                var iocAdapterReleases = Container.Adapter as IRelease;
-                if (iocAdapterReleases != null)
+                if (Container.Adapter is IRelease iocAdapterReleases)
                 {
                     iocAdapterReleases.Release(instance);
                 }
@@ -837,7 +887,7 @@ namespace ServiceStack
         public virtual string GetBaseUrl(IRequest httpReq)
         {
             var useHttps = UseHttps(httpReq);
-            var baseUrl = HttpHandlerFactory.GetBaseUrl();
+            var baseUrl = HostContext.Config.WebHostUrl;
             if (baseUrl != null)
                 return baseUrl.NormalizeScheme(useHttps);
 
@@ -858,13 +908,14 @@ namespace ServiceStack
             return VirtualFileSources.CombineVirtualPath(VirtualFileSources.RootDirectory.RealPath, virtualPath);
         }
 
-        private bool delayLoadPlugin;
+        private bool delayedLoadPlugin;
         public virtual void LoadPlugin(params IPlugin[] plugins)
         {
-            if (delayLoadPlugin)
+            if (delayedLoadPlugin)
             {
                 LoadPluginsInternal(plugins);
                 Plugins.AddRange(plugins);
+                PopulateArrayFilters();
             }
             else
             {
@@ -891,30 +942,17 @@ namespace ServiceStack
             }
         }
 
-        public virtual object ExecuteService(object requestDto)
-        {
-            return ExecuteService(requestDto, RequestAttributes.None);
-        }
+        public virtual object ExecuteService(object requestDto) => ExecuteService(requestDto, RequestAttributes.None);
 
-        public virtual object ExecuteService(object requestDto, IRequest req)
-        {
-            return ServiceController.Execute(requestDto, req);
-        }
+        public virtual object ExecuteService(object requestDto, IRequest req) => ServiceController.Execute(requestDto, req);
 
-        public virtual object ExecuteService(object requestDto, RequestAttributes requestAttributes)
-        {
-            return ServiceController.Execute(requestDto, new BasicRequest(requestDto, requestAttributes));
-        }
+        public virtual Task<object> ExecuteServiceAsync(object requestDto, IRequest req) => ServiceController.ExecuteAsync(requestDto, req);
 
-        public virtual object ExecuteMessage(IMessage mqMessage)
-        {
-            return ServiceController.ExecuteMessage(mqMessage, new BasicRequest(mqMessage));
-        }
+        public virtual object ExecuteService(object requestDto, RequestAttributes requestAttributes) => ServiceController.Execute(requestDto, new BasicRequest(requestDto, requestAttributes));
 
-        public virtual object ExecuteMessage(IMessage dto, IRequest req)
-        {
-            return ServiceController.ExecuteMessage(dto, req);
-        }
+        public virtual object ExecuteMessage(IMessage mqMessage) => ServiceController.ExecuteMessage(mqMessage, new BasicRequest(mqMessage));
+
+        public virtual object ExecuteMessage(IMessage dto, IRequest req) => ServiceController.ExecuteMessage(dto, req);
 
         public virtual void RegisterService(Type serviceType, params string[] atRestPaths)
         {
@@ -1002,14 +1040,9 @@ namespace ServiceStack
             return relativePath.MapProjectPath();
         }
 
-        public virtual string ResolvePathInfo(IRequest request, string originalPathInfo, out bool isDirectory)
+        public virtual string ResolvePathInfo(IRequest request, string originalPathInfo)
         {
-            var pathInfo = NormalizePathInfo(originalPathInfo, Config.HandlerFactoryPath);
-            isDirectory = VirtualFileSources.DirectoryExists(pathInfo);
-            
-            if (!isDirectory && pathInfo.Length > 1 && pathInfo[pathInfo.Length - 1] == '/')
-                pathInfo = pathInfo.TrimEnd('/');
-            
+            var pathInfo = NormalizePathInfo(originalPathInfo, Config.HandlerFactoryPath);            
             return pathInfo;
         }
 
@@ -1079,6 +1112,7 @@ namespace ServiceStack
                     Container = null;
                 }
 
+                JS.UnConfigure();
                 JsConfig.Reset(); //Clears Runtime Attributes
 
                 Instance = null;

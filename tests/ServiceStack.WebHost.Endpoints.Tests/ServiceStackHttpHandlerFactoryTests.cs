@@ -17,9 +17,18 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         [OneTimeSetUp]
         public void TestFixtureSetUp()
         {
-            appHost = new BasicAppHost(GetType().GetAssembly()).Init();
-            HostContext.CatchAllHandlers.Add(new PredefinedRoutesFeature().ProcessRequest);
-            HostContext.CatchAllHandlers.Add(new MetadataFeature().ProcessRequest);
+            appHost = new BasicAppHost(GetType().Assembly)
+            {
+                ConfigureAppHost = host =>
+                {
+                    host.Plugins.Add(new PredefinedRoutesFeature());
+#if !NETCORE
+                    host.Plugins.Add(new SoapFormat());
+#endif
+                    host.CatchAllHandlers.Add(new PredefinedRoutesFeature().ProcessRequest);
+                    host.CatchAllHandlers.Add(new MetadataFeature().ProcessRequest);
+                }
+            }.Init();
         }
 
         [OneTimeTearDown]
@@ -63,7 +72,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             foreach (var item in pathInfoMap)
             {
                 var expectedType = item.Value;
-                var httpReq = new BasicRequest
+                var httpReq = new BasicHttpRequest
                 {
                     PathInfo = item.Key,
                 };
@@ -73,19 +82,19 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
 
         [Test]
-        public void Resolves_the_right_handler_for_case_insensitive_expexted_paths()
+        public void Resolves_the_right_handler_for_case_insensitive_expected_paths()
         {
             foreach (var item in pathInfoMap)
             {
                 var expectedType = item.Value;
                 var lowerPathInfo = item.Key.ToLower();
                 lowerPathInfo.Print();
-                var httpReq = new BasicRequest
+                var httpReq = new BasicHttpRequest
                 {
                     PathInfo = lowerPathInfo,
                 };
                 var handler = HttpHandlerFactory.GetHandlerForPathInfo(httpReq, null);
-                Assert.That(handler.GetType(), Is.EqualTo(expectedType));
+                Assert.That(handler?.GetType(), Is.EqualTo(expectedType));
             }
         }
     }

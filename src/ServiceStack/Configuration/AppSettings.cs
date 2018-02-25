@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Linq;
+using ServiceStack.Web;
 
 namespace ServiceStack.Configuration
 {
@@ -13,12 +15,11 @@ namespace ServiceStack.Configuration
         {
             public string Get(string key)
             {
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
                 return ConfigurationManager.AppSettings[key];
 #else
                 var appSettings = ConfigUtils.GetAppSettingsMap();
-                string value;
-                return appSettings.TryGetValue(key, out value)
+                return appSettings.TryGetValue(key, out var value)
                     ? value
                     : null;
 #endif
@@ -26,7 +27,7 @@ namespace ServiceStack.Configuration
 
             public List<string> GetAllKeys()
             {
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
                 return new List<string>(ConfigurationManager.AppSettings.AllKeys);
 #else
                 var appSettings = ConfigUtils.GetAppSettingsMap();
@@ -52,6 +53,19 @@ namespace ServiceStack.Configuration
         public override string GetString(string name) //Keeping backwards compatible
         {
             return base.GetNullableString(name); 
+        }
+    }
+
+    public class RuntimeAppSettings : IRuntimeAppSettings
+    {
+        public Dictionary<string, Func<IRequest, object>> Settings { get; set; } = new Dictionary<string, Func<IRequest, object>>();
+
+        public T Get<T>(IRequest request, string name, T defaultValue)
+        {
+            if (Settings.TryGetValue(name, out var fn))
+                return (T)fn(request);
+
+            return defaultValue;
         }
     }
 }

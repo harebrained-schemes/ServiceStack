@@ -33,7 +33,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         public class AsyncTaskAppHost : AppHostHttpListenerBase
         {
             public AsyncTaskAppHost() 
-                : base(typeof(AsyncTaskAppHost).Name, typeof(AsyncTaskAppHost).GetAssembly()) {}
+                : base(typeof(AsyncTaskAppHost).Name, typeof(AsyncTaskAppHost).Assembly) {}
 
             public override void Configure(Container container) {}
         }
@@ -330,7 +330,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         }
     }
 
-    [Explicit, TestFixture]
+    [Ignore("Load Test"), TestFixture]
     public class AsyncLoadTests
     {
         const int NoOfTimes = 1000;

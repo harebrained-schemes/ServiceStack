@@ -48,11 +48,10 @@ namespace ServiceStack.Auth
             using (authRepo as IDisposable)
             {
                 var session = authService.GetSession();
-                IUserAuth userAuth;
-                if (authRepo.TryAuthenticate(userName, password, out userAuth))
+                if (authRepo.TryAuthenticate(userName, password, out var userAuth))
                 {
                     if (IsAccountLocked(authRepo, userAuth))
-                        throw new AuthenticationException(ErrorMessages.UserAccountLocked);
+                        throw new AuthenticationException(ErrorMessages.UserAccountLocked.Localize(authService.Request));
 
                     PopulateSession(authRepo, userAuth, session);
 
@@ -130,7 +129,7 @@ namespace ServiceStack.Auth
                 };
             }
 
-            throw HttpError.Unauthorized(ErrorMessages.InvalidUsernameOrPassword);
+            throw HttpError.Unauthorized(ErrorMessages.InvalidUsernameOrPassword.Localize(authService.Request));
         }
 
         protected virtual object AuthenticatePrivateRequest(
@@ -141,10 +140,10 @@ namespace ServiceStack.Auth
             {
                 var userAuth = authRepo.GetUserAuthByUserName(userName);
                 if (userAuth == null)
-                    throw HttpError.Unauthorized(ErrorMessages.InvalidUsernameOrPassword);
+                    throw HttpError.Unauthorized(ErrorMessages.InvalidUsernameOrPassword.Localize(authService.Request));
 
                 if (IsAccountLocked(authRepo, userAuth))
-                    throw new AuthenticationException(ErrorMessages.UserAccountLocked);
+                    throw new AuthenticationException(ErrorMessages.UserAccountLocked.Localize(authService.Request));
 
                 PopulateSession(authRepo, userAuth, session);
 
@@ -171,8 +170,7 @@ namespace ServiceStack.Auth
         {
             session.AuthProvider = Provider;
 
-            var userSession = session as AuthUserSession;
-            if (userSession != null)
+            if (session is AuthUserSession userSession)
             {
                 LoadUserAuthInfo(userSession, tokens, authInfo);
                 HostContext.TryResolve<IAuthMetadataProvider>().SafeAddMetadata(tokens, authInfo);

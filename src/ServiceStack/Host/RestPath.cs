@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using ServiceStack.Serialization;
 using ServiceStack.Text;
 using ServiceStack.Web;
@@ -15,7 +16,7 @@ namespace ServiceStack.Host
         private const char WildCardChar = '*';
         private const string PathSeparator = "/";
         private const char PathSeparatorChar = '/';
-        private static readonly char[] PathSeparatorCharArray = new char[] {'/'};
+        private static readonly char[] PathSeparatorCharArray = {'/'};
         private const char ComponentSeparator = '.';
         private const string VariablePrefix = "{";
 
@@ -65,6 +66,10 @@ namespace ServiceStack.Host
         public string Summary { get; private set; }
 
         public string Notes { get; private set; }
+        
+        public string MatchRule { get; private set; }
+
+        private Func<IHttpRequest, bool> matchRuleFn;
 
         public bool AllowsAllVerbs { get; }
 
@@ -86,7 +91,7 @@ namespace ServiceStack.Host
             //and 20 times faster than simple string concatenation
             return pathPartsForMatching.Length < prefixesLookup.Length 
                 ? prefixesLookup[pathPartsForMatching.Length]
-                : pathPartsForMatching.Length.ToString() + PathSeparator;
+                : pathPartsForMatching.Length + PathSeparator;
         }
 
         public static IEnumerable<string> GetFirstMatchHashKeys(string[] pathPartsForMatching)
@@ -122,11 +127,12 @@ namespace ServiceStack.Host
 
         public RestPath(Type requestType, string path) : this(requestType, path, null) { }
 
-        public RestPath(Type requestType, string path, string verbs, string summary = null, string notes = null)
+        public RestPath(Type requestType, string path, string verbs, string summary = null, string notes = null, string matchRule = null)
         {
             this.RequestType = requestType;
             this.Summary = summary;
             this.Notes = notes;
+            this.MatchRule = matchRule;
             this.Path = path;
 
             this.AllowsAllVerbs = verbs == null || verbs == WildCard;
@@ -262,8 +268,7 @@ namespace ServiceStack.Host
             if (CalculateMatchScore != null)
                 return CalculateMatchScore(this, httpMethod, withPathInfoParts);
 
-            int wildcardMatchCount;
-            var isMatch = IsMatch(httpMethod, withPathInfoParts, out wildcardMatchCount);
+            var isMatch = IsMatch(httpMethod, withPathInfoParts, out var wildcardMatchCount);
             if (!isMatch) return -1;
 
             var score = 0;
@@ -285,14 +290,69 @@ namespace ServiceStack.Host
         /// For performance withPathInfoParts should already be a lower case string
         /// to minimize redundant matching operations.
         /// </summary>
-        /// <param name="httpMethod"></param>
-        /// <param name="withPathInfoParts"></param>
         /// <returns></returns>
-        public bool IsMatch(string httpMethod, string[] withPathInfoParts)
+        public bool IsMatch(IHttpRequest httpReq)
         {
-            int wildcardMatchCount;
-            return IsMatch(httpMethod, withPathInfoParts, out wildcardMatchCount);
+            var pathInfo = httpReq.PathInfo;
+
+            var matchFn = GetRequestRule();
+            if (matchFn != null)
+            {
+                var validRoute = matchFn(httpReq);
+                if (!validRoute)
+                    return false;
+            }
+
+            pathInfo = RestHandler.GetSanitizedPathInfo(pathInfo, out var contentType);
+                        
+            var pathInfoParts = GetPathPartsForMatching(pathInfo);
+
+            return IsMatch(httpReq.HttpMethod, pathInfoParts, out var wildcardMatchCount);
         }
+
+        public void AfterInit()
+        {
+            if (this.MatchRule != null)
+            {
+                if (!HostContext.Config.RequestRules.TryGetValue(this.MatchRule, out this.matchRuleFn))
+                {
+                    var regexParts = this.MatchRule.SplitOnFirst("=~");
+                    if (regexParts.Length == 2)
+                    {
+                        var field = regexParts[0].Trim();
+                        var regex = regexParts[1].Trim();
+                        var compiledRegex = new Regex(regex, RegexOptions.Compiled);
+
+                        matchRuleFn = req =>
+                        {
+                            var reqValue = req.GetRequestValue(field);
+                            return compiledRegex.IsMatch(reqValue);
+                        };
+                    }
+                    else
+                    {
+                        var exactMatchParts = this.MatchRule.SplitOnFirst('=');
+                        if (exactMatchParts.Length == 2)
+                        {
+                            var field = exactMatchParts[0].Trim();
+                            var exactMatch = exactMatchParts[1].Trim();
+                            var isNull = exactMatch == "null";
+
+                            matchRuleFn = req =>
+                            {
+                                var reqValue = req.GetRequestValue(field);
+                                if (reqValue == null)
+                                    return isNull;
+                                return reqValue == exactMatch;
+                            };
+                        }
+                        else throw new NotSupportedException($"Unknown Matches Rule '{MatchRule}' in Route '{Path}'");
+                    }
+                }
+            }
+        }
+
+        public Func<IHttpRequest, bool> GetRequestRule() => this.matchRuleFn;
 
         /// <summary>
         /// For performance withPathInfoParts should already be a lower case string
@@ -413,8 +473,7 @@ namespace ServiceStack.Host
                     continue;
                 }
 
-                string propertyNameOnRequest;
-                if (!this.propertyNamesMap.TryGetValue(variableName.ToLower(), out propertyNameOnRequest))
+                if (!this.propertyNamesMap.TryGetValue(variableName.ToLower(), out var propertyNameOnRequest))
                 {
                     if (Keywords.Ignore.EqualsIgnoreCase(variableName))
                     {

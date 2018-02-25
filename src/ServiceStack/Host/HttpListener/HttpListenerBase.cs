@@ -1,4 +1,4 @@
-﻿#if !NETSTANDARD1_6 
+﻿#if !NETSTANDARD2_0
 
 //Copyright (c) ServiceStack, Inc. All Rights Reserved.
 //License: https://raw.github.com/ServiceStack/ServiceStack/master/license.txt
@@ -33,9 +33,6 @@ namespace ServiceStack.Host.HttpListener
         protected string registeredReservedUrl = null;
 
         private readonly AutoResetEvent ListenForNextRequest = new AutoResetEvent(false);
-
-        [Obsolete("Use OnBeforeRequestFn")]
-        public event DelReceiveWebRequest ReceiveWebRequest;
 
         public Action<HttpListenerContext> BeforeRequest { get; set; }
 
@@ -87,7 +84,7 @@ namespace ServiceStack.Host.HttpListener
         public virtual ListenerRequest CreateRequest(HttpListenerContext httpContext, string operationName)
         {
             var req = new ListenerRequest(httpContext, operationName, RequestAttributes.None);
-            req.RequestAttributes = req.GetAttributes();
+            req.RequestAttributes = req.GetAttributes() | RequestAttributes.Http;
             return req;
         }
 
@@ -285,15 +282,14 @@ namespace ServiceStack.Host.HttpListener
             var httpRes = httpReq.Response;
             var contentType = httpReq.ResponseContentType;
 
-            var serializer = HostContext.ContentTypes.GetResponseSerializer(contentType);
+            var serializer = HostContext.ContentTypes.GetStreamSerializerAsync(contentType);
             if (serializer == null)
             {
                 contentType = HostContext.Config.DefaultContentType;
-                serializer = HostContext.ContentTypes.GetResponseSerializer(contentType);
+                serializer = HostContext.ContentTypes.GetStreamSerializerAsync(contentType);
             }
 
-            var httpError = ex as IHttpError;
-            if (httpError != null)
+            if (ex is IHttpError httpError)
             {
                 httpRes.StatusCode = httpError.Status;
                 httpRes.StatusDescription = httpError.StatusDescription;
@@ -305,7 +301,7 @@ namespace ServiceStack.Host.HttpListener
 
             httpRes.ContentType = contentType;
 
-            serializer(httpReq, errorResponse, httpRes);
+            serializer(httpReq, errorResponse, httpRes.OutputStream).Wait();
 
             httpRes.Close();
         }
@@ -319,10 +315,8 @@ namespace ServiceStack.Host.HttpListener
 
         protected virtual void OnBeginRequest(HttpListenerContext context)
         {
-            ReceiveWebRequest?.Invoke(context);
             BeforeRequest?.Invoke(context);
         }
-
 
         /// <summary>
         /// Shut down the Web Service

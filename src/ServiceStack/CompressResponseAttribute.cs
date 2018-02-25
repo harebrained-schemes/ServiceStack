@@ -1,12 +1,13 @@
 ﻿using ServiceStack.Web;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace ServiceStack
 {
-    public class CompressResponseAttribute : ResponseFilterAttribute
+    public class CompressResponseAttribute : ResponseFilterAsyncAttribute
     {
-        public override void Execute(IRequest req, IResponse res, object response)
+        public override async Task ExecuteAsync(IRequest req, IResponse res, object response)
         {
             if (response is Exception)
                 return;
@@ -20,7 +21,7 @@ namespace ServiceStack
                     ?? (object) concreteResult?.ResponseText;
             }
 
-            if (src == null || src is IPartialWriter || src is IStreamWriter)
+            if (src == null || src is IPartialWriter || src is IPartialWriterAsync || src is IStreamWriter || src is IStreamWriterAsync)
                 return;
 
             var encoding = req.GetCompressionType();
@@ -30,13 +31,11 @@ namespace ServiceStack
             var responseBytes = src as byte[];
             if (responseBytes == null)
             {
-                var rawStr = src as string;
-                if (rawStr != null)
+                if (src is string rawStr)
                     responseBytes = rawStr.ToUtf8Bytes();
                 else
                 {
-                    var stream = src as Stream;
-                    if (stream != null)
+                    if (src is Stream stream)
                         responseBytes = stream.ReadFully();
                 }
             }
@@ -73,7 +72,7 @@ namespace ServiceStack
                 }
             }
 
-            res.WriteBytesToResponse(responseBytes, req.ResponseContentType);
+            await res.WriteBytesToResponse(responseBytes, req.ResponseContentType);
             using (response as IDisposable) {}
         }
     }

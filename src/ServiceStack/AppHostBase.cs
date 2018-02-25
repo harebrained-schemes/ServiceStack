@@ -1,4 +1,4 @@
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
 using System;
 using System.Reflection;
 using System.Web;
@@ -52,7 +52,7 @@ namespace ServiceStack
         public override string GetBaseUrl(IRequest httpReq)
         {
             var useHttps = UseHttps(httpReq);
-            var baseUrl = HttpHandlerFactory.GetBaseUrl();
+            var baseUrl = Config.WebHostUrl;
             if (baseUrl != null)
                 return baseUrl.NormalizeScheme(useHttps);
 

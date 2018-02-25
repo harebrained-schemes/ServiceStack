@@ -18,7 +18,7 @@ using ServiceStack.Web;
 using ServiceStack.Logging;
 using ServiceStack.Text;
 
-#if NETSTANDARD1_6
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
@@ -691,7 +691,6 @@ namespace ServiceStack
 
         public Type GetFromType(Type requestDtoType)
         {
-            Type fromType;
             var intoTypeDef = requestDtoType.GetTypeWithGenericTypeDefinitionOf(typeof(IQueryData<,>));
             if (intoTypeDef != null)
             {
@@ -711,8 +710,7 @@ namespace ServiceStack
 
         public ITypedQueryData GetTypedQuery(Type requestDtoType, Type fromType)
         {
-            ITypedQueryData defaultValue;
-            if (TypedQueries.TryGetValue(requestDtoType, out defaultValue)) return defaultValue;
+            if (TypedQueries.TryGetValue(requestDtoType, out var defaultValue)) return defaultValue;
 
             var genericType = typeof(TypedQueryData<,>).MakeGenericType(requestDtoType, fromType);
             defaultValue = genericType.CreateInstance<ITypedQueryData>();
@@ -734,8 +732,7 @@ namespace ServiceStack
             if (QueryFilters == null)
                 return (DataQuery<From>)q;
 
-            QueryDataFilterDelegate filterFn = null;
-            if (!QueryFilters.TryGetValue(dto.GetType(), out filterFn))
+            if (!QueryFilters.TryGetValue(dto.GetType(), out var filterFn))
             {
                 foreach (var type in dto.GetType().GetInterfaces())
                 {
@@ -754,8 +751,7 @@ namespace ServiceStack
             if (QueryFilters == null)
                 return q;
 
-            QueryDataFilterDelegate filterFn = null;
-            if (!QueryFilters.TryGetValue(dto.GetType(), out filterFn))
+            if (!QueryFilters.TryGetValue(dto.GetType(), out var filterFn))
             {
                 foreach (var type in dto.GetType().GetInterfaces())
                 {
@@ -804,8 +800,7 @@ namespace ServiceStack
                     responseFilter(ctx);
                 }
 
-                string total;
-                response.Total = response.Meta.TryGetValue("COUNT(*)", out total)
+                response.Total = response.Meta.TryGetValue("COUNT(*)", out var total)
                     ? total.ToInt()
                     : (int)Db.Count(expr); //fallback if it's not populated (i.e. if stripped by custom ResponseFilter)
 
@@ -893,7 +888,6 @@ namespace ServiceStack
         public IQueryResponse Execute(IQueryData request, IDataQuery q)
         {
             var requestDtoType = request.GetType();
-            ITypedQueryData typedQuery;
             
             Type fromType;
             Type intoType;
@@ -982,9 +976,9 @@ namespace ServiceStack
             this.context = context;
         }
 
-        public virtual IDataQuery From<T>()
+        public virtual IDataQuery From<TSource>()
         {
-            return new DataQuery<T>(context);
+            return new DataQuery<TSource>(context);
         }
 
         public abstract IEnumerable<T> GetDataSource(IDataQuery q);
@@ -1302,8 +1296,7 @@ namespace ServiceStack
             {
                 var name = entry.Key.LeftPart('#');
 
-                QueryDataField attr;
-                if (QueryFieldMap.TryGetValue(name, out attr))
+                if (QueryFieldMap.TryGetValue(name, out var attr))
                 {
                     if (attr.Field != null)
                         name = attr.Field;
@@ -1436,7 +1429,7 @@ namespace ServiceStack
             if (options == null) return null;
 
             var match = options.IgnoreProperties == null || !options.IgnoreProperties.Contains(name)
-                ? q.FirstMatchingField(name) ?? (name.EndsWith(Pluralized) ? q.FirstMatchingField(name.TrimEnd('s')) : null)
+                ? q.FirstMatchingField(name) ?? (name.EndsWith(Pluralized) ? q.FirstMatchingField(name.Substring(0, name.Length - 1)) : null)
                 : null;
 
             if (match == null)
@@ -1446,7 +1439,7 @@ namespace ServiceStack
                     if (name.Length <= startsWith.Key.Length || !name.StartsWith(startsWith.Key)) continue;
 
                     var field = name.Substring(startsWith.Key.Length);
-                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.TrimEnd('s')) : null);
+                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.Substring(0, field.Length - 1)) : null);
                     if (match != null)
                         return new MatchQuery(match, startsWith.Value);
                 }
@@ -1458,7 +1451,7 @@ namespace ServiceStack
                     if (name.Length <= endsWith.Key.Length || !name.EndsWith(endsWith.Key)) continue;
 
                     var field = name.Substring(0, name.Length - endsWith.Key.Length);
-                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.TrimEnd('s')) : null);
+                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.Substring(0, field.Length - 1)) : null);
                     if (match != null)
                         return new MatchQuery(match, endsWith.Value);
                 }

@@ -11,7 +11,7 @@ using ServiceStack.Text;
 using ServiceStack.Web;
 using System.Web;
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
     using ServiceStack.Host.AspNet;
     using System.Web.Mvc;
     using System.Web.Routing;
@@ -94,7 +94,7 @@ namespace ServiceStack.Mvc
                 action = "Unauthorized"
             }));
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
         public static Func<System.Web.Routing.RequestContext, ServiceStackController> CatchAllController;
 
         protected virtual ActionResult InvokeDefaultAction(HttpContextBase httpContext)
@@ -160,7 +160,7 @@ namespace ServiceStack.Mvc
         private IServiceStackProvider serviceStackProvider;
         public virtual IServiceStackProvider ServiceStackProvider => 
             serviceStackProvider ?? (serviceStackProvider = 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
             new ServiceStackProvider(new AspNetRequest(base.HttpContext, GetType().Name)));
 #else
             new ServiceStackProvider(new NetCoreRequest(base.HttpContext, GetType().Name)));
@@ -187,29 +187,22 @@ namespace ServiceStack.Mvc
 
         public virtual bool IsAuthenticated => ServiceStackProvider.IsAuthenticated;
 
-        protected virtual IAuthSession GetSession(bool reload = true) => ServiceStackProvider.GetSession(reload);
+        public virtual IAuthSession GetSession(bool reload = true) => ServiceStackProvider.GetSession(reload);
 
+        //don't expose public generic methods in MVC Controllers
         protected virtual TUserSession SessionAs<TUserSession>() => ServiceStackProvider.SessionAs<TUserSession>();
 
-        protected virtual void SaveSession(IAuthSession session, TimeSpan? expiresIn = null) => ServiceStackProvider.Request.SaveSession(session, expiresIn);
+        public virtual void SaveSession(IAuthSession session, TimeSpan? expiresIn = null) => ServiceStackProvider.Request.SaveSession(session, expiresIn);
 
-        protected virtual void ClearSession() => ServiceStackProvider.ClearSession();
+        public virtual void ClearSession() => ServiceStackProvider.ClearSession();
 
         protected virtual T TryResolve<T>() => ServiceStackProvider.TryResolve<T>();
 
         protected virtual T ResolveService<T>() => ServiceStackProvider.ResolveService<T>();
 
-        protected virtual object ForwardRequestToServiceStack(IRequest request = null) => ServiceStackProvider.Execute(request ?? ServiceStackProvider.Request);
+        public virtual object ForwardRequestToServiceStack(IRequest request = null) => ServiceStackProvider.Execute(request ?? ServiceStackProvider.Request);
 
         public virtual IServiceGateway Gateway => ServiceStackProvider.Gateway;
-
-#if !NETSTANDARD1_6
-        [Obsolete("Use Gateway")]
-        protected virtual TResponse Execute<TResponse>(IReturn<TResponse> requestDto) => ServiceStackProvider.Execute(requestDto);
-
-        [Obsolete("Use Gateway")]
-        protected virtual void PublishMessage<T>(T message) => ServiceStackProvider.PublishMessage(message);
-#endif
 
         private bool hasDisposed = false;
         protected override void Dispose(bool disposing)
@@ -233,7 +226,7 @@ namespace ServiceStack.Mvc
             HostContext.AppHost.OnEndRequest(ServiceStackRequest);
     }
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
     public class ServiceStackJsonResult : JsonResult
     {
         public override void ExecuteResult(ControllerContext context)

@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using ServiceStack.Host.NetCore;
+using ServiceStack.IO;
 using ServiceStack.Web;
 
 namespace ServiceStack
@@ -31,20 +32,29 @@ namespace ServiceStack
         public virtual void Bind(IApplicationBuilder app)
         {
             this.app = app;
+
+            if (pathBase != null)
+            {
+                this.app.UsePathBase(pathBase);
+            }
+
             AppHostBase.BindHost(this, app);
             app.Use(ProcessRequest);
         }
 
         public override void OnConfigLoad()
         {
+            base.OnConfigLoad();
             if (app != null)
             {
                 //Initialize VFS
                 var env = app.ApplicationServices.GetService<IHostingEnvironment>();
                 Config.WebHostPhysicalPath = env.WebRootPath ?? env.ContentRootPath;
+                Config.DebugMode = env.IsDevelopment();
 
+                //Set VirtualFiles to point to ContentRootPath (Project Folder)
+                VirtualFiles = new FileSystemVirtualFiles(env.ContentRootPath);
                 AppHostBase.RegisterLicenseFromAppSettings(AppSettings);
-
                 Config.MetadataRedirectPath = "metadata";
             }
         }
@@ -61,7 +71,10 @@ namespace ServiceStack
             if (!string.IsNullOrEmpty(mode))
             {
                 if (pathInfo.IndexOf(mode, StringComparison.Ordinal) != 1)
+                {
                     await next();
+                    return;
+                }
 
                 pathInfo = pathInfo.Substring(mode.Length + 1);
             }
@@ -75,7 +88,7 @@ namespace ServiceStack
             try 
             {
                 httpReq = new NetCoreRequest(context, operationName, RequestAttributes.None, pathInfo); 
-                httpReq.RequestAttributes = httpReq.GetAttributes();
+                httpReq.RequestAttributes = httpReq.GetAttributes() | RequestAttributes.Http;
                 httpRes = httpReq.Response;
                 handler = HttpHandlerFactory.GetHandler(httpReq);
             } 
@@ -95,8 +108,7 @@ namespace ServiceStack
                 return;
             }
 
-            var serviceStackHandler = handler as IServiceStackHandler;
-            if (serviceStackHandler != null)
+            if (handler is IServiceStackHandler serviceStackHandler)
             {
                 if (serviceStackHandler is NotFoundHttpHandler)
                 {
@@ -107,8 +119,7 @@ namespace ServiceStack
                 if (!string.IsNullOrEmpty(serviceStackHandler.RequestName))
                     operationName = serviceStackHandler.RequestName;
 
-                var restHandler = serviceStackHandler as RestHandler;
-                if (restHandler != null)
+                if (serviceStackHandler is RestHandler restHandler)
                 {
                     httpReq.OperationName = operationName = restHandler.RestPath.RequestType.GetOperationName();
                 }
@@ -148,8 +159,27 @@ namespace ServiceStack
             base.Init();
         }
 
+        private string pathBase;
+        private string ParsePathBase(string urlBase)
+        {
+            var pos = urlBase.IndexOf('/', "https://".Length);
+            if (pos >= 0)
+            {
+                var afterHost = urlBase.Substring(pos);
+                if (afterHost.Length > 1)
+                {
+                    pathBase = afterHost;
+                    return urlBase.Substring(0, pos + 1);
+                }
+            }
+
+            return urlBase;
+        }
+
         public override ServiceStackHost Start(string urlBase)
         {
+            urlBase = ParsePathBase(urlBase);
+
             return Start(new[] { urlBase });
         }
 
@@ -211,6 +241,7 @@ namespace ServiceStack
             }
 
             base.Dispose(disposing);
+            LogManager.LogFactory = null;
         }
     }    
 }

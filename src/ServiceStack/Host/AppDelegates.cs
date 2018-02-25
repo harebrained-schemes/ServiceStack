@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using System.Web;
 using ServiceStack.Web;
 
@@ -11,9 +12,14 @@ namespace ServiceStack.Host
     public delegate void HandleUncaughtExceptionDelegate(
         IRequest httpReq, IResponse httpRes, string operationName, Exception ex);
 
+    public delegate Task HandleUncaughtExceptionAsyncDelegate(
+        IRequest httpReq, IResponse httpRes, string operationName, Exception ex);
+
     public delegate object HandleServiceExceptionDelegate(IRequest httpReq, object request, Exception ex);
 
-    public delegate RestPath FallbackRestPathDelegate(string httpMethod, string pathInfo, string filePath);
+    public delegate Task<object> HandleServiceExceptionAsyncDelegate(IRequest httpReq, object request, Exception ex);
+
+    public delegate RestPath FallbackRestPathDelegate(IHttpRequest httpReq);
 
     public interface ITypedFilter
     {

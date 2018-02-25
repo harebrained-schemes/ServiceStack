@@ -1,4 +1,4 @@
-﻿#if NETSTANDARD1_6
+﻿#if NETSTANDARD2_0
 
 using System;
 using System.Collections.Generic;
@@ -37,6 +37,8 @@ namespace ServiceStack.Mvc
     public class RazorFormat : IPlugin, Html.IViewEngine
     {
         public static ILog log = LogManager.GetLogger(typeof(RazorFormat));
+
+        public static string DefaultLayout { get; set; } = "_Layout";
 
         public IVirtualPathProvider VirtualFileSources { get; set; }
 
@@ -113,11 +115,11 @@ namespace ServiceStack.Mvc
         public bool HasView(string viewName, IRequest httpReq = null) => false;
 
         public string RenderPartial(string pageName, object model, bool renderHtml, StreamWriter writer = null,
-            Html.HtmlHelper htmlHelper = null) => null;
+            Html.IHtmlContext htmlHelper = null) => null;
 
         private const string RenderException = "RazorFormat.Exception";
 
-        public bool ProcessRequest(IRequest req, IResponse res, object dto)
+        public async Task<bool> ProcessRequestAsync(IRequest req, object dto, Stream outputStream)
         {
             if (req.Dto == null || dto == null)
                 return false;
@@ -125,8 +127,7 @@ namespace ServiceStack.Mvc
             if (req.Items.ContainsKey(RenderException))
                 return false;
 
-            var httpResult = dto as IHttpResult;
-            if (httpResult != null)
+            if (dto is IHttpResult httpResult)
                 dto = httpResult.Response;
 
             var viewNames = new List<string> { req.Dto.GetType().Name, dto.GetType().Name };
@@ -143,8 +144,7 @@ namespace ServiceStack.Mvc
 
             ViewDataDictionary viewData = null;
 
-            var errorDto = dto as ErrorResponse;
-            if (errorDto != null)
+            if (dto is ErrorResponse errorDto)
             {
                 var razorView = viewEngineResult.View as RazorView;
                 var genericDef = razorView.RazorPage.GetType().FirstGenericType();
@@ -160,7 +160,7 @@ namespace ServiceStack.Mvc
             if (viewData == null)
                 viewData = CreateViewData(dto);
 
-            RenderView(req, res, viewData, viewEngineResult.View, req.GetTemplate());
+            await RenderView(req, outputStream, viewData, viewEngineResult.View, req.GetTemplate());
 
             return true;
         }
@@ -192,7 +192,7 @@ namespace ServiceStack.Mvc
             };
         }
 
-        internal void RenderView(IRequest req, IResponse res, ViewDataDictionary viewData, IView view, string layout=null)
+        internal async Task RenderView(IRequest req, Stream stream, ViewDataDictionary viewData, IView view, string layout=null)
         {
             var razorView = view as RazorView;
             try
@@ -202,16 +202,21 @@ namespace ServiceStack.Mvc
                     new RouteData(),
                     new ActionDescriptor());
 
-                var stream = res.OutputStream;
-
                 var sw = new StreamWriter(stream);
                 {
                     if (viewData == null)
                         viewData = CreateViewData((object)null);
 
-                    viewData["Layout"] = layout;
+                    // Use "_Layout" if unspecified
+                    if (razorView != null)
+                        razorView.RazorPage.Layout = layout ?? DefaultLayout;
+
+                    // Allows Layout from being overridden in page with: Layout = Html.ResolveLayout("LayoutUnlessOverridden")
+                    if (layout != null)
+                        viewData["Layout"] = layout;
 
                     viewData[Keywords.IRequest] = req;
+
                     var viewContext = new ViewContext(
                         actionContext,
                         view,
@@ -220,7 +225,7 @@ namespace ServiceStack.Mvc
                         sw,
                         new HtmlHelperOptions());
 
-                    view.RenderAsync(viewContext).GetAwaiter().GetResult();
+                    await view.RenderAsync(viewContext);
 
                     sw.Flush();
 
@@ -238,7 +243,7 @@ namespace ServiceStack.Mvc
             {
                 req.Items[RenderException] = ex;
                 //Can't set HTTP Headers which are already written at this point
-                req.Response.WriteErrorBody(ex);
+                await req.Response.WriteErrorBody(ex);
             }
         }
     }
@@ -261,7 +266,7 @@ namespace ServiceStack.Mvc
             this.Model = model;
         }
 
-        public override void ProcessRequest(IRequest req, IResponse res, string operationName)
+        public override async Task ProcessRequestAsync(IRequest req, IResponse res, string operationName)
         {
             var format = HostContext.GetPlugin<RazorFormat>();
             try
@@ -274,22 +279,19 @@ namespace ServiceStack.Mvc
 
                     //If resolving from PathInfo, same RazorPage is used so must fetch new instance each time
                     var viewResult = format.GetPageFromPathInfo(PathInfo);
-                    if (viewResult == null)
-                        throw new ArgumentException("Could not find Razor Page at " + PathInfo);
-
-                    view = viewResult.View;
+                    view = viewResult?.View ?? throw new ArgumentException("Could not find Razor Page at " + PathInfo);
                 }
 
-                RenderView(format, req, res, view);
+                await RenderView(format, req, res, view);
             }
             catch (Exception ex)
             {
                 //Can't set HTTP Headers which are already written at this point
-                req.Response.WriteErrorBody(ex);
+                await req.Response.WriteErrorBody(ex);
             }
         }
 
-        private void RenderView(RazorFormat format, IRequest req, IResponse res, IView view)
+        private async Task RenderView(RazorFormat format, IRequest req, IResponse res, IView view)
         {
             res.ContentType = MimeTypes.Html;
             var model = Model;
@@ -319,17 +321,17 @@ namespace ServiceStack.Mvc
                 {
                     viewData[cookie.Key] = cookie.Value.Value;
                 }
-                foreach (string header in req.Headers)
+                foreach (var header in req.Headers.AllKeys)
                 {
                     viewData[header] = req.Headers[header];
                 }
-                foreach (string key in req.QueryString)
+                foreach (var key in req.QueryString.AllKeys)
                 {
                     viewData[key] = req.QueryString[key];
                 }
-                foreach (string key in req.FormData)
+                foreach (var key in req.FormData.AllKeys)
                 {
-                    viewData[key] = req.QueryString[key];
+                    viewData[key] = req.FormData[key];
                 }
                 foreach (var entry in req.Items)
                 {
@@ -337,17 +339,7 @@ namespace ServiceStack.Mvc
                 }
             }
 
-            format.RenderView(req, res, viewData, view);
-        }
-
-        public override object CreateRequest(IRequest request, string operationName)
-        {
-            return null;
-        }
-
-        public override object GetResponse(IRequest httpReq, object request)
-        {
-            return null;
+            await format.RenderView(req, res.OutputStream, viewData, view);
         }
     }
 
@@ -422,16 +414,12 @@ namespace ServiceStack.Mvc
 
         public static IHtmlContent RenderMarkdown(this IHtmlHelper htmlHelper, string markdown)
         {
-            var feature = HostContext.GetPlugin<Formats.MarkdownFormat>();
-            return feature != null
-                ? new HtmlString(feature.Transform(markdown))
-                : new HtmlString(new MarkdownSharp.Markdown().Transform(markdown));
+            return new HtmlString(MarkdownConfig.Transform(markdown));
         }
 
         public static string ResolveLayout(this IHtmlHelper htmlHelper, string defaultLayout)
         {
-            var layout = htmlHelper.ViewData["Layout"] as string;
-            if (layout != null)
+            if (htmlHelper.ViewData["Layout"] is string layout)
                 return layout;
 
             var template = htmlHelper.GetRequest()?.GetTemplate();
@@ -441,6 +429,14 @@ namespace ServiceStack.Mvc
         public static string GetQueryString(this IHtmlHelper htmlHelper, string paramName)
         {
             return htmlHelper.GetRequest().QueryString[paramName];
+        }
+
+        public static HtmlString IncludeFile(this IHtmlHelper htmlHelper, string virtualPath)
+        {
+            var file = HostContext.VirtualFileSources.GetFile(virtualPath);
+            return file != null
+                ? new HtmlString(file.ReadAllText())
+                : HtmlString.Empty;
         }
     }
 
@@ -461,8 +457,7 @@ namespace ServiceStack.Mvc
         {
             get
             {
-                object oRequest;
-                if (base.ViewContext.ViewData.TryGetValue(Keywords.IRequest, out oRequest))
+                if (base.ViewContext.ViewData.TryGetValue(Keywords.IRequest, out var oRequest))
                     return (IHttpRequest)oRequest;
 
                 return AppHostBase.GetOrCreateRequest(Context) as IHttpRequest;
@@ -489,15 +484,13 @@ namespace ServiceStack.Mvc
             if (response == null)
                 return null;
 
-            var status = response as ResponseStatus;
-            if (status != null)
+            if (response is ResponseStatus status)
                 return status;
 
-            var hasResponseStatus = response as IHasResponseStatus;
-            if (hasResponseStatus != null)
+            if (response is IHasResponseStatus hasResponseStatus)
                 return hasResponseStatus.ResponseStatus;
 
-            var propertyInfo = response.GetType().GetPropertyInfo("ResponseStatus");
+            var propertyInfo = response.GetType().GetProperty("ResponseStatus");
             return propertyInfo?.GetProperty(response) as ResponseStatus;
         }
 
@@ -506,7 +499,14 @@ namespace ServiceStack.Mvc
             return new HtmlString(RazorViewExtensions.GetErrorHtml(GetErrorStatus()) ?? "");
         }
 
-        public virtual T GetPlugin<T>() where T : class, IPlugin => HostContext.AppHost.GetPlugin<T>();
+        public IVirtualFiles VirtualFiles => HostContext.VirtualFiles;
+        public IVirtualPathProvider VirtualFileSources => HostContext.VirtualFileSources;
+
+        public IAppHost AppHost => ServiceStackHost.Instance;
+
+        public bool DebugMode => HostContext.DebugMode;
+
+        public virtual TPlugin GetPlugin<TPlugin>() where TPlugin : class, IPlugin => HostContext.AppHost.GetPlugin<TPlugin>();
 
         private IServiceStackProvider provider;
         public virtual IServiceStackProvider ServiceStackProvider => provider ?? (provider = new ServiceStackProvider(Request));
@@ -541,9 +541,9 @@ namespace ServiceStack.Mvc
 
         protected virtual void ClearSession() => ServiceStackProvider.ClearSession();
 
-        protected virtual T TryResolve<T>() => ServiceStackProvider.TryResolve<T>();
+        protected virtual TDependency TryResolve<TDependency>() => ServiceStackProvider.TryResolve<TDependency>();
 
-        protected virtual T ResolveService<T>() => ServiceStackProvider.ResolveService<T>();
+        protected virtual TService ResolveService<TService>() => ServiceStackProvider.ResolveService<TService>();
 
         protected virtual object ForwardRequestToServiceStack(IRequest request = null) => ServiceStackProvider.Execute(request ?? ServiceStackProvider.Request);
 

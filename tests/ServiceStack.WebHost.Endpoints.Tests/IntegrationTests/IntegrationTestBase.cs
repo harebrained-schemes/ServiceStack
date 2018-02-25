@@ -34,13 +34,16 @@ namespace ServiceStack.WebHost.Endpoints.Tests.IntegrationTests
 		public class IntegrationTestAppHost : AppHostHttpListenerBase 
 		{
             public IntegrationTestAppHost()
-                : base("ServiceStack Examples", typeof(RestMovieService).GetAssembly())
+                : base("ServiceStack Examples", typeof(RestMovieService).Assembly)
             {
                 LogManager.LogFactory = new DebugLogFactory();
             }
 
             public override void Configure(Container container)
             {
+#if !NETCORE
+                Plugins.Add(new SoapFormat());
+#endif
                 container.Register<IAppSettings>(new AppSettings());
 
                 container.Register(c => new ExampleConfig(c.Resolve<IAppSettings>()));

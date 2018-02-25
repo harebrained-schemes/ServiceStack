@@ -58,7 +58,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         class AppHost : AppSelfHostBase
         {
             public AppHost()
-                : base(nameof(ZipServiceClientTests), typeof(HelloZipService).GetAssembly()) { }
+                : base(nameof(ZipServiceClientTests), typeof(HelloZipService).Assembly) { }
 
             public override void Configure(Container container) {}
         }
@@ -152,7 +152,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             Assert.That(response.Result, Is.EqualTo("Hello, Deflate"));
         }
 
-        [Explicit, Test]
+        [Ignore("Integration Test"), Test]
         public void Can_send_gzip_client_request_ASPNET()
         {
             var client = new JsonServiceClient(Config.AspNetServiceStackBaseUri)

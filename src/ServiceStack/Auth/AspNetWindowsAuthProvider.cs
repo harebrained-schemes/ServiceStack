@@ -1,4 +1,4 @@
-﻿#if !NETSTANDARD1_6
+﻿#if !NETSTANDARD2_0
 
 using System;
 using System.Collections.Generic;
@@ -142,7 +142,7 @@ namespace ServiceStack.Auth
                 };
             }
 
-            throw HttpError.Unauthorized(ErrorMessages.WindowsAuthFailed);
+            throw HttpError.Unauthorized(ErrorMessages.WindowsAuthFailed.Localize(authService.Request));
         }
 
         protected override IAuthRepository GetAuthRepository(IRequest req)

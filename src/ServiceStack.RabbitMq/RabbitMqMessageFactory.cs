@@ -13,7 +13,7 @@ namespace ServiceStack.RabbitMq
         private int retryCount;
         public int RetryCount
         {
-            get { return retryCount; }
+            get => retryCount;
             set
             {
                 if (value < 0 || value > 1)
@@ -43,7 +43,7 @@ namespace ServiceStack.RabbitMq
 
             if (connectionString.StartsWith("amqp://"))
             {
-                ConnectionFactory.Uri = connectionString;
+                ConnectionFactory.Uri = new Uri(connectionString);
             }
             else
             {

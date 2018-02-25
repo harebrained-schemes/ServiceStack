@@ -43,7 +43,8 @@ namespace ServiceStack.WebHost.Endpoints.Tests.Support
 
         private bool ApplyRequestFilters<TResponse>(object request)
         {
-            if (HostContext.ApplyRequestFilters(httpReq, httpRes, request))
+            HostContext.ApplyRequestFiltersAsync(httpReq, httpRes, request).Wait();
+            if (httpRes.IsClosed)
             {
                 ThrowIfError<TResponse>(httpRes);
                 return true;
@@ -77,7 +78,8 @@ namespace ServiceStack.WebHost.Endpoints.Tests.Support
 
         private bool ApplyResponseFilters<TResponse>(object response)
         {
-            if (HostContext.ApplyResponseFilters(httpReq, httpRes, response))
+            HostContext.ApplyResponseFiltersAsync(httpReq, httpRes, response).Wait();
+            if (httpRes.IsClosed)
             {
                 ThrowIfError<TResponse>(httpRes);
                 return true;
@@ -165,7 +167,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests.Support
             httpReq.HttpMethod = HttpMethods.Get;
 
             var requestTypeName = typeof(TResponse).Namespace + "." + relativeOrAbsoluteUrl;
-            var requestType = typeof(TResponse).GetAssembly().GetType(requestTypeName);
+            var requestType = typeof(TResponse).Assembly.GetType(requestTypeName);
             if (requestType == null)
                 throw new ArgumentException("Type not found: " + requestTypeName);
 

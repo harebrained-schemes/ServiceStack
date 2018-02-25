@@ -28,12 +28,19 @@ namespace ServiceStack.Common.Tests
         protected TestBase(string serviceClientBaseUri, params Assembly[] serviceAssemblies)
         {
             if (serviceAssemblies.Length == 0)
-                serviceAssemblies = new[] { GetType().GetAssembly() };
+                serviceAssemblies = new[] { GetType().Assembly };
 
             ServiceClientBaseUri = serviceClientBaseUri;
             ServiceAssemblies = serviceAssemblies;
 
-            this.AppHost = new BasicAppHost(serviceAssemblies).Init();
+            this.AppHost = new BasicAppHost(serviceAssemblies)
+            {
+                ConfigureAppHost = host =>
+                {
+                    host.CatchAllHandlers.Add(new PredefinedRoutesFeature().ProcessRequest);
+                    host.CatchAllHandlers.Add(new MetadataFeature().ProcessRequest);
+                }
+            }.Init();
         }
 
         [OneTimeTearDown]
@@ -289,8 +296,7 @@ namespace ServiceStack.Common.Tests
             private static void HandleException<TResponse>(Exception exception, Action<TResponse, Exception> onError)
             {
                 var response = (TResponse)typeof(TResponse).CreateInstance();
-                var hasResponseStatus = response as IHasResponseStatus;
-                if (hasResponseStatus != null)
+                if (response is IHasResponseStatus hasResponseStatus)
                 {
                     hasResponseStatus.ResponseStatus = new ResponseStatus {
                         ErrorCode = exception.GetType().Name,
@@ -299,7 +305,7 @@ namespace ServiceStack.Common.Tests
                     };
                 }
                 var webServiceEx = new WebServiceException(exception.Message, exception);
-                if (onError != null) onError(response, webServiceEx);
+                onError?.Invoke(response, webServiceEx);
             }
 
             public void SetCredentials(string userName, string password)
@@ -486,8 +492,7 @@ namespace ServiceStack.Common.Tests
             {
                 var message = MessageFactory.Create(request);
                 var response = ServiceManager.ExecuteMessage(message);
-                var httpResult = response as IHttpResult;
-                if (httpResult != null)
+                if (response is IHttpResult httpResult)
                 {
                     if (httpResult.StatusCode >= HttpStatusCode.BadRequest)
                     {
@@ -502,7 +507,7 @@ namespace ServiceStack.Common.Tests
                 }
 
                 var responseStatus = response.GetResponseStatus();
-                var isError = responseStatus != null && responseStatus.ErrorCode != null;
+                var isError = responseStatus?.ErrorCode != null;
                 if (isError)
                 {
                     var webEx = new WebServiceException(responseStatus.Message)
@@ -644,14 +649,14 @@ namespace ServiceStack.Common.Tests
                     formData.ToNameValueCollection()
                 );
 
-            var httpHandler = GetHandler(httpReq);
+            var httpHandler = (IRequestHttpHandler)GetHandler(httpReq);
             httpReq.OperationName = httpHandler.RequestName;
 
-            var request = httpHandler.CreateRequest(httpReq, httpHandler.RequestName);
+            var request = httpHandler.CreateRequestAsync(httpReq, httpHandler.RequestName).Result;
             object response;
             try
             {
-                response = httpHandler.GetResponse(httpReq, request);
+                response = httpHandler.GetResponseAsync(httpReq, request).Result;
             }
             catch (Exception ex)
             {
@@ -670,16 +675,13 @@ namespace ServiceStack.Common.Tests
                     };
                 }
                 var hasResponseStatus = httpRes.Response as IHasResponseStatus;
-                if (hasResponseStatus != null)
+                var status = hasResponseStatus?.ResponseStatus;
+                if (status != null && !status.ErrorCode.IsNullOrEmpty())
                 {
-                    var status = hasResponseStatus.ResponseStatus;
-                    if (status != null && !status.ErrorCode.IsNullOrEmpty())
-                    {
-                        throw new WebServiceException(status.Message) {
-                            StatusCode = (int)HttpStatusCode.InternalServerError,
-                            ResponseDto = httpRes.Response,
-                        };
-                    }
+                    throw new WebServiceException(status.Message) {
+                        StatusCode = (int)HttpStatusCode.InternalServerError,
+                        ResponseDto = httpRes.Response,
+                    };
                 }
 
                 return httpRes.Response;
@@ -726,10 +728,10 @@ namespace ServiceStack.Common.Tests
                     formData.ToNameValueCollection()
                 );
 
-            var httpHandler = GetHandler(httpReq);
+            var httpHandler = (IRequestHttpHandler)GetHandler(httpReq);
             httpReq.OperationName = httpHandler.RequestName;
 
-            var request = httpHandler.CreateRequest(httpReq, httpHandler.RequestName);
+            var request = httpHandler.CreateRequestAsync(httpReq, httpHandler.RequestName).Result;
             return request;
         }
 

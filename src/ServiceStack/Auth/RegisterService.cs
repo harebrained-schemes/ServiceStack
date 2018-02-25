@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using ServiceStack.FluentValidation;
@@ -33,7 +34,7 @@ namespace ServiceStack.Auth
                             }
                         })
                         .WithErrorCode("AlreadyExists")
-                        .WithMessage(ErrorMessages.UsernameAlreadyExists)
+                        .WithMessage(ErrorMessages.UsernameAlreadyExists.Localize(base.Request))
                         .When(x => !x.UserName.IsNullOrEmpty());
                     RuleFor(x => x.Email)
                         .Must(x =>
@@ -45,7 +46,7 @@ namespace ServiceStack.Auth
                             }
                         })
                         .WithErrorCode("AlreadyExists")
-                        .WithMessage(ErrorMessages.EmailAlreadyExists)
+                        .WithMessage(ErrorMessages.EmailAlreadyExists.Localize(base.Request))
                         .When(x => !x.Email.IsNullOrEmpty());
                 });
             RuleSet(
@@ -58,15 +59,12 @@ namespace ServiceStack.Auth
         }
     }
 
-    [Obsolete("Use normal RegistrationFeature and have your IAuthRepository implement ICustomUserAuth instead")]
-    [DefaultRequest(typeof(Register))]
-    public class RegisterService<TUserAuth> : RegisterService
-        where TUserAuth : class, IUserAuth { }
-
     [DefaultRequest(typeof(Register))]
     public class RegisterService : Service
     {
         public static ValidateFn ValidateFn { get; set; }
+        
+        public static bool AllowUpdates { get; set; }
 
         public IValidator<Register> RegistrationValidator { get; set; }
 
@@ -106,14 +104,16 @@ namespace ServiceStack.Auth
             var newUserAuth = ToUserAuth(authRepo, request);
             using (authRepo as IDisposable)
             {
-                var existingUser = authRepo.GetUserAuth(session, null);
+                var existingUser = session.IsAuthenticated ? authRepo.GetUserAuth(session, null) : null;
                 registerNewUser = existingUser == null;
 
-                if (HostContext.GlobalRequestFilters == null
-                    || !HostContext.GlobalRequestFilters.Contains(ValidationFilters.RequestFilter)) //Already gets run
+                if (!HostContext.AppHost.GlobalRequestFiltersAsyncArray.Contains(ValidationFilters.RequestFilterAsync)) //Already gets run
                 {
                     RegistrationValidator?.ValidateAndThrow(request, registerNewUser ? ApplyTo.Post : ApplyTo.Put);
                 }
+                
+                if (!registerNewUser && !AllowUpdates)
+                    throw new NotSupportedException(ErrorMessages.RegisterUpdatesDisabled.Localize(Request));
 
                 user = registerNewUser
                     ? authRepo.CreateUserAuth(newUserAuth, request.Password)
@@ -201,8 +201,7 @@ namespace ServiceStack.Auth
         /// </summary>
         public object UpdateUserAuth(Register request)
         {
-            if (HostContext.GlobalRequestFilters == null
-                || !HostContext.GlobalRequestFilters.Contains(ValidationFilters.RequestFilter))
+            if (!HostContext.AppHost.GlobalRequestFiltersAsyncArray.Contains(ValidationFilters.RequestFilterAsync)) //Already gets run
             {
                 RegistrationValidator.ValidateAndThrow(request, ApplyTo.Put);
             }
@@ -218,7 +217,7 @@ namespace ServiceStack.Auth
             {
                 var existingUser = authRepo.GetUserAuth(session, null);
                 if (existingUser == null)
-                    throw HttpError.NotFound(ErrorMessages.UserNotExists);
+                    throw HttpError.NotFound(ErrorMessages.UserNotExists.Localize(Request));
 
                 var newUserAuth = ToUserAuth(authRepo, request);
                 authRepo.UpdateUserAuth(existingUser, newUserAuth, request.Password);

@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
-#if !NETSTANDARD1_6
-	using System.Web.Mvc;
+#if !NETSTANDARD2_0
+    using System.Web.Mvc;
 #else
-	using Microsoft.AspNetCore.Mvc;
+    using Microsoft.AspNetCore.Mvc;
     using Microsoft.AspNetCore.Mvc.Filters;
     using Microsoft.AspNetCore.Mvc.Controllers;
 #endif
@@ -17,8 +17,7 @@ namespace ServiceStack.Mvc
     {
         public override void OnActionExecuting(ActionExecutingContext filterContext)
         {
-            var ssController = filterContext.Controller as ServiceStackController;
-            if (ssController == null) return;
+            if (!(filterContext.Controller is ServiceStackController ssController)) return;
 
             ssController.ViewData[Keywords.IRequest] = ssController.ServiceStackRequest;
 
@@ -55,7 +54,7 @@ namespace ServiceStack.Mvc
         {
             var attrs = new List<T>();
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
             var attr = filterContext.ActionDescriptor
                 .GetCustomAttributes(typeof(T), true)
                 .FirstOrDefault() as T;

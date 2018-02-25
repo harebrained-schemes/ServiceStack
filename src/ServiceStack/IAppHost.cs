@@ -74,12 +74,12 @@ namespace ServiceStack
         /// <summary>
         /// Add Request Converter to convert Request DTO's
         /// </summary>
-        List<Func<IRequest, object, object>> RequestConverters { get; }
+        List<Func<IRequest, object, Task<object>>> RequestConverters { get; }
 
         /// <summary>
         /// Add Response Converter to convert Response DTO's
         /// </summary>
-        List<Func<IRequest, object, object>> ResponseConverters { get; }
+        List<Func<IRequest, object, Task<object>>> ResponseConverters { get; }
 
         /// <summary>
         /// Add Request Filters for HTTP Requests
@@ -95,6 +95,11 @@ namespace ServiceStack
         /// Add Response Filters for HTTP Responses
         /// </summary>
         List<Action<IRequest, IResponse, object>> GlobalResponseFilters { get; }
+
+        /// <summary>
+        /// Add Async Response Filters for HTTP Responses
+        /// </summary>
+        List<Func<IRequest, IResponse, object, Task>> GlobalResponseFiltersAsync { get; set; }
 
         /// <summary>
         /// Add Request Filters for MQ/TCP Requests
@@ -166,9 +171,19 @@ namespace ServiceStack
         List<HandleServiceExceptionDelegate> ServiceExceptionHandlers { get; }
 
         /// <summary>
+        /// Provide an exception handler for unhandled exceptions (Async)
+        /// </summary>
+        List<HandleServiceExceptionAsyncDelegate> ServiceExceptionHandlersAsync { get; }
+
+        /// <summary>
         /// Provide an exception handler for un-caught exceptions
         /// </summary>
         List<HandleUncaughtExceptionDelegate> UncaughtExceptionHandlers { get; }
+
+        /// <summary>
+        /// Provide an exception handler for un-caught exceptions (Async)
+        /// </summary>
+        List<HandleUncaughtExceptionAsyncDelegate> UncaughtExceptionHandlersAsync { get; }
 
         /// <summary>
         /// Provide callbacks to be fired after the AppHost has finished initializing
@@ -216,6 +231,12 @@ namespace ServiceStack
         IAppSettings AppSettings { get; }
 
         /// <summary>
+        /// Allow specific configuration to be overridden at runtime in multi-tenancy Applications
+        /// by overriding GetRuntimeConfig in your AppHost
+        /// </summary>
+        T GetRuntimeConfig<T>(IRequest req, string name, T defaultValue);
+
+        /// <summary>
         /// Register an Adhoc web service on Startup
         /// </summary>
         void RegisterService(Type serviceType, params string[] atRestPaths);
@@ -239,9 +260,6 @@ namespace ServiceStack
         /// Returns the Absolute File Path, relative from your AppHost's Project Path
         /// </summary>
         string MapProjectPath(string relativePath);
-
-        [Obsolete("Renamed to VirtualFileSources")]
-        IVirtualPathProvider VirtualPathProvider { get; set; }
 
         /// <summary>
         /// Cascading number of file sources, inc. Embedded Resources, File System, In Memory, S3

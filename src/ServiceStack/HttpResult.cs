@@ -41,7 +41,7 @@ namespace ServiceStack
         {
             this.Headers = new Dictionary<string, string>();
             this.Cookies = new List<Cookie>();
-            this.ResponseFilter = ContentTypes.Instance;
+            this.ResponseFilter = HostContext.AppHost?.ContentTypes ?? ContentTypes.Instance;
 
             this.Response = response;
             this.ContentType = contentType;
@@ -156,7 +156,7 @@ namespace ServiceStack
                 else
                     this.Headers.Remove(HttpHeaders.AcceptRanges);
             }
-            get { return allowsPartialResponse; }
+            get => allowsPartialResponse;
         }
 
         public string Location
@@ -221,8 +221,8 @@ namespace ServiceStack
 
         public HttpStatusCode StatusCode
         {
-            get { return (HttpStatusCode)Status; }
-            set { Status = (int)value; }
+            get => (HttpStatusCode)Status;
+            set => Status = (int)value;
         }
 
         public string StatusDescription { get; set; }
@@ -320,7 +320,10 @@ namespace ServiceStack
 
             RequestContext.SetItem("HttpResult", this);
 
-            ResponseFilter.SerializeToStream(this.RequestContext, this.Response, responseStream);
+            if (Response != null || View != null || Template != null) //allow new HttpResult { View = "/default.cshtml" }
+            {
+                await ResponseFilter.SerializeToStreamAsync(this.RequestContext, this.Response, responseStream);
+            }
         }
         
         public bool IsPartialRequest => 
@@ -331,8 +334,7 @@ namespace ServiceStack
             var contentLength = GetContentLength().GetValueOrDefault(int.MaxValue); //Safe as guarded by IsPartialRequest
             var rangeHeader = RequestContext.GetHeader(HttpHeaders.Range);
 
-            long rangeStart, rangeEnd;
-            rangeHeader.ExtractHttpRanges(contentLength, out rangeStart, out rangeEnd);
+            rangeHeader.ExtractHttpRanges(contentLength, out var rangeStart, out var rangeEnd);
 
             if (rangeEnd > contentLength - 1)
                 rangeEnd = contentLength - 1;
@@ -462,6 +464,7 @@ namespace ServiceStack
         public void Dispose()
         {
             DisposeStream();
+            using (Response as IDisposable) {}
         }
     }
 
@@ -478,7 +481,7 @@ namespace ServiceStack
         ProxyRevalidate = 1 << 6,
     }
 
-#if !NETSTANDARD1_6
+#if !NETSTANDARD2_0
     public static class HttpResultExtensions
     {
         public static System.Net.Cookie ToCookie(this HttpCookie httpCookie)

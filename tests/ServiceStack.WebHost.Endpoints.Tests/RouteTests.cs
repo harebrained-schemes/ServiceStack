@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net;
+using System.Runtime.Serialization;
 using System.Threading.Tasks;
 using Funq;
 using NUnit.Framework;
@@ -34,11 +35,38 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo")
                 .GetStringFromUrl(responseFilter: httpRes =>
                 {
-                    httpRes.ContentType.Print();
                     Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Html));
                 });
 
             Assert.That(response, Does.StartWith("<!doctype html>"));
+        }
+
+        [Test]
+        public void Can_download_original_route_with_Accept_json()
+        {
+            var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo")
+                .GetStringFromUrl(
+                    requestFilter: req => req.Accept = MimeTypes.Json,
+                    responseFilter: httpRes =>
+                    {
+                        Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Json));
+                    });
+
+            Assert.That(response.ToLower(), Is.EqualTo("{\"data\":\"foo\"}"));
+        }
+
+        [Test]
+        public void Can_download_original_route_with_trailing_slash_and_Accept_json()
+        {
+            var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo/")
+                .GetStringFromUrl(
+                    requestFilter: req => req.Accept = MimeTypes.Json,
+                    responseFilter: httpRes =>
+                    {
+                        Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Json));
+                    });
+
+            Assert.That(response.ToLower(), Is.EqualTo("{\"data\":\"foo\"}"));
         }
 
         [Test]
@@ -47,7 +75,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo.json")
                 .GetStringFromUrl(responseFilter: httpRes =>
                 {
-                    httpRes.ContentType.Print();
                     Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Json));
                 });
 
@@ -62,7 +89,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
                     contentType:MimeTypes.PlainText,
                     responseFilter: httpRes => 
                     {
-                        httpRes.ContentType.Print();
                         Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Json));
                     });
 
@@ -75,7 +101,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo.xml")
                 .GetStringFromUrl(responseFilter: httpRes =>
                 {
-                    httpRes.ContentType.Print();
                     Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Xml));
                 });
 
@@ -88,7 +113,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo.html")
                 .GetStringFromUrl(responseFilter: httpRes =>
                 {
-                    httpRes.ContentType.Print();
                     Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Html));
                 });
 
@@ -101,7 +125,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             var response = Config.AbsoluteBaseUri.CombineWith("/custom/foo.csv")
                 .GetStringFromUrl(responseFilter: httpRes =>
                 {
-                    httpRes.ContentType.Print();
                     Assert.That(httpRes.ContentType.MatchesContentType(MimeTypes.Csv));
                 });
 
@@ -217,11 +240,29 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             response = await client.SendAsync(new RequestWithVersion());
             Assert.That(response.Version, Is.EqualTo(1));
         }
+
+        [Test]
+        public async Task Can_POST_to_IdWithAlias_with_JsonServiceClient_async()
+        {
+            var client = new JsonServiceClient(Config.AbsoluteBaseUri);
+
+            var response = await client.PostAsync(new IdWithAlias { Id = 1 });
+            Assert.That(response.Id, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task Can_POST_to_IdWithAlias_with_JsonHttpClient_async()
+        {
+            var client = new JsonHttpClient(Config.AbsoluteBaseUri);
+
+            var response = await client.PostAsync(new IdWithAlias { Id = 1 });
+            Assert.That(response.Id, Is.EqualTo(1));
+        }
     }
 
     public class RouteAppHost : AppHostHttpListenerBase
     {
-        public RouteAppHost() : base(typeof(BufferedRequestTests).Name, typeof(CustomRouteService).GetAssembly()) { }
+        public RouteAppHost() : base(typeof(BufferedRequestTests).Name, typeof(CustomRouteService).Assembly) { }
 
         public override void Configure(Container container)
         {
@@ -231,8 +272,6 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             });
 
             Plugins.Add(new CsvFormat()); //required to allow .csv
-
-            Plugins.RemoveAll(x => x is MarkdownFormat);
 
             ContentTypes.Register(MimeTypes.PlainText,
                 (req, o, stream) => JsonSerializer.SerializeToStream(o.GetType(), stream),
@@ -275,27 +314,22 @@ namespace ServiceStack.WebHost.Endpoints.Tests
         public int Version { get; set; }
     }
 
+    [Route("/thing/{Id}/point", "POST")]
+    [DataContract]
+    public class IdWithAlias : IReturn<IdWithAlias>
+    {
+        [DataMember(Name = "id")]
+        public int Id { get; set; }
+    }
+
+
     public class CustomRouteService : IService
     {
-        public object Any(CustomRoute request)
-        {
-            return request;
-        }
-
-        public object Any(CustomRouteDot request)
-        {
-            return request;
-        }
-
-        public object Any(GetPngPic request)
-        {
-            return request;
-        }
-
-        public object Any(RequestWithVersion request)
-        {
-            return request;
-        }
+        public object Any(CustomRoute request) => request;
+        public object Any(CustomRouteDot request) => request;
+        public object Any(GetPngPic request) => request;
+        public object Any(RequestWithVersion request) => request;
+        public object Any(IdWithAlias request) => request;
     }
 
     [TestFixture]
@@ -340,7 +374,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
     public class ModifiedRouteAppHost : AppHostHttpListenerBase
     {
-        public ModifiedRouteAppHost() : base(typeof(BufferedRequestTests).Name, typeof(CustomRouteService).GetAssembly()) { }
+        public ModifiedRouteAppHost() : base(typeof(BufferedRequestTests).Name, typeof(CustomRouteService).Assembly) { }
 
         public override void Configure(Container container)
         {
@@ -378,7 +412,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
         class InvalidRoutesAppHost : AppSelfHostBase
         {
-            public InvalidRoutesAppHost() : base(typeof(InvalidRoutesAppHost).Name, typeof(InvalidRoutesAppHost).GetAssembly()) { }
+            public InvalidRoutesAppHost() : base(typeof(InvalidRoutesAppHost).Name, typeof(InvalidRoutesAppHost).Assembly) { }
 
             public override void Configure(Container container)
             {
@@ -432,7 +466,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
 
     class RouteInfoAppHost : AppSelfHostBase
     {
-        public RouteInfoAppHost() : base(typeof(RouteInfoAppHost).Name, typeof(RouteInfoAppHost).GetAssembly()) { }
+        public RouteInfoAppHost() : base(typeof(RouteInfoAppHost).Name, typeof(RouteInfoAppHost).Assembly) { }
         public override void Configure(Container container)
         {
             CatchAllHandlers.Add((httpMethod, pathInfo, filePath) =>

@@ -8,6 +8,7 @@ using ServiceStack.Host.Handlers;
 using ServiceStack.Html;
 using ServiceStack.IO;
 using ServiceStack.Logging;
+using ServiceStack.OrmLite;
 using ServiceStack.Razor.Compilation;
 using ServiceStack.Razor.Managers;
 using ServiceStack.Web;
@@ -29,6 +30,7 @@ namespace ServiceStack.Razor
             this.DefaultPageName = "default.cshtml";
             this.PageBaseType = typeof(ViewPage);
             this.LiveReloadFactory = CreateLiveReload;
+            CompilerServices.IncludeAssemblies.Add(typeof(OrmLiteConfig).Assembly);
 
             Deny = new List<Predicate<string>> {
                 DenyPathsWithLeading_,
@@ -55,13 +57,6 @@ namespace ServiceStack.Razor
         public bool UseAdvancedCompression { get; set; }
         public bool LoadUnloadedAssemblies { get; set; }
         public IVirtualPathProvider VirtualFileSources { get; set; }
-
-        [Obsolete("Renamed to VirtualFileSources")]
-        public IVirtualPathProvider VirtualPathProvider
-        {
-            get { return VirtualFileSources; }
-            set { VirtualFileSources = value; }
-        }
 
         public ILiveReload LiveReload { get; set; }
         public Func<RazorViewManager, ILiveReload> LiveReloadFactory { get; set; }
@@ -227,18 +222,19 @@ namespace ServiceStack.Razor
             return new FileSystemWatcherLiveReload(viewManager);
         }
 
-        public void ProcessRazorPage(IRequest httpReq, RazorPage contentPage, object model, IResponse httpRes)
+        public IRazorView ProcessRazorPage(IRequest httpReq, RazorPage contentPage, object model, IResponse httpRes)
         {
-            PageResolver.ExecuteRazorPage(httpReq, httpRes, model, contentPage);
+            return PageResolver.ExecuteRazorPage(httpReq, httpRes.OutputStream, model, contentPage);
         }
 
-        public void ProcessRequest(IRequest httpReq, IResponse httpRes, object dto)
+        public void ProcessRequest(IRequest httpReq, IResponse httpRes, object dto) //only used in tests
         {
-            PageResolver.ProcessRequest(httpReq, httpRes, dto);
+            PageResolver.ProcessRequestAsync(httpReq, dto, httpRes.OutputStream).Wait();
         }
+        
         public void ProcessContentPageRequest(IRequest httpReq, IResponse httpRes)
         {
-            ((IServiceStackHandler)PageResolver).ProcessRequest(httpReq, httpRes, httpReq.OperationName);
+            ((IServiceStackHandler)PageResolver).ProcessRequestAsync(httpReq, httpRes, httpReq.OperationName);
         }
 
         public RazorPage AddPage(string filePath)
@@ -266,8 +262,7 @@ namespace ServiceStack.Razor
             if (this.VirtualFileSources == null)
                 throw new ArgumentNullException("VirtualPathProvider");
 
-            var writableFileProvider = this.VirtualFileSources as IVirtualFiles;
-            if (writableFileProvider == null)
+            if (!(this.VirtualFileSources is IVirtualFiles writableFileProvider))
                 throw new InvalidOperationException("VirtualPathProvider is not IVirtualFiles");
 
             var tmpPath = "/__tmp/{0}.cshtml".Fmt(Guid.NewGuid().ToString("N"));
@@ -304,17 +299,17 @@ namespace ServiceStack.Razor
         public string RenderToHtml(RazorPage razorPage, out IRazorView razorView, object model = null, string layout = null)
         {
             if (razorPage == null)
-                throw new ArgumentNullException("razorPage");
+                throw new ArgumentNullException(nameof(razorPage));
 
             var httpReq = new BasicRequest();
             if (layout != null)
             {
-                httpReq.Items[RazorPageResolver.LayoutKey] = layout;
+                httpReq.Items[Keywords.Template] = layout;
             }
 
-            razorView = PageResolver.ExecuteRazorPage(httpReq, httpReq.Response, model, razorPage);
-
             var ms = (MemoryStream)httpReq.Response.OutputStream;
+            razorView = PageResolver.ExecuteRazorPage(httpReq, ms, model, razorPage);
+
             return ms.ToArray().FromUtf8Bytes();
         }
     }

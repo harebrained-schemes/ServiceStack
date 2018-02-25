@@ -15,7 +15,7 @@ using ServiceStack.Data;
 using ServiceStack.OrmLite;
 using ServiceStack.Text;
 
-#if NETSTANDARD1_6
+#if NETSTANDARD2_0
 using Microsoft.Extensions.Primitives;
 #endif
 
@@ -30,9 +30,6 @@ namespace ServiceStack
         public IQueryDb Dto { get; set; }
         public ISqlExpression SqlExpression { get; set; }
         public IQueryResponse Response { get; set; }
-
-        [Obsolete("Use Dto")]
-        public IQueryDb Request => Dto;
     }
 
     public class AutoQueryFeature : IPlugin, IPostInitPlugin
@@ -134,8 +131,7 @@ namespace ServiceStack
         {
             if (StripUpperInLike)
             {
-                string convention;
-                if (ImplicitConventions.TryGetValue("%Like%", out convention) && convention == CaseInsensitiveLikeFormat)
+                if (ImplicitConventions.TryGetValue("%Like%", out var convention) && convention == CaseInsensitiveLikeFormat)
                     ImplicitConventions["%Like%"] = CaseSensitiveLikeFormat;
 
                 foreach (var attr in EndsWithConventions)
@@ -362,9 +358,6 @@ namespace ServiceStack
         }
     }
 
-    [Obsolete("Use IAutoQueryDb")]
-    public interface IAutoQuery { }
-
     public interface IAutoQueryDb
     {
         ITypedQuery GetTypedQuery(Type dtoType, Type fromType);
@@ -453,7 +446,6 @@ namespace ServiceStack
 
         public Type GetFromType(Type requestDtoType)
         {
-            Type fromType;
             var intoTypeDef = requestDtoType.GetTypeWithGenericTypeDefinitionOf(typeof(IQueryDb<,>));
             if (intoTypeDef != null)
             {
@@ -498,8 +490,7 @@ namespace ServiceStack
             if (QueryFilters == null)
                 return (SqlExpression<From>)q;
 
-            QueryFilterDelegate filterFn = null;
-            if (!QueryFilters.TryGetValue(dto.GetType(), out filterFn))
+            if (!QueryFilters.TryGetValue(dto.GetType(), out var filterFn))
             {
                 foreach (var type in dto.GetType().GetInterfaces())
                 {
@@ -518,8 +509,7 @@ namespace ServiceStack
             if (QueryFilters == null)
                 return q;
 
-            QueryFilterDelegate filterFn = null;
-            if (!QueryFilters.TryGetValue(dto.GetType(), out filterFn))
+            if (!QueryFilters.TryGetValue(dto.GetType(), out var filterFn))
             {
                 foreach (var type in dto.GetType().GetInterfaces())
                 {
@@ -568,8 +558,7 @@ namespace ServiceStack
                     responseFilter(ctx);
                 }
 
-                string total;
-                response.Total = response.Meta.TryGetValue("COUNT(*)", out total)
+                response.Total = response.Meta.TryGetValue("COUNT(*)", out var total)
                     ? total.ToInt()
                     : (int)Db.Count(expr); //fallback if it's not populated (i.e. if stripped by custom ResponseFilter)
 
@@ -650,7 +639,6 @@ namespace ServiceStack
         public IQueryResponse Execute(IQueryDb request, ISqlExpression q)
         {
             var requestDtoType = request.GetType();
-            ITypedQueryData typedQuery;
             
             Type fromType;
             Type intoType;
@@ -788,11 +776,21 @@ namespace ServiceStack
 
             if (!string.IsNullOrEmpty(dto.Fields))
             {
-                var fields = dto.Fields.Split(',')
+                var fields = dto.Fields;
+                var selectDistinct = fields.StartsWith("DISTINCT ", StringComparison.OrdinalIgnoreCase);
+                if (selectDistinct)
+                {
+                    fields = fields.Substring("DISTINCT ".Length);
+                }
+
+                var fieldNames = fields.Split(',')
                     .Where(x => x.Trim().Length > 0)
                     .Map(x => x.Trim());
 
-                q.Select(fields.ToArray());
+                if (selectDistinct)
+                    q.SelectDistinct(fieldNames.ToArray());
+                else
+                    q.Select(fieldNames.ToArray());
             }
 
             return q;
@@ -800,9 +798,7 @@ namespace ServiceStack
 
         private void AppendSqlFilters(SqlExpression<From> q, IQueryDb dto, Dictionary<string, string> dynamicParams, IAutoQueryOptions options)
         {
-            string select, from, where;
-
-            dynamicParams.TryGetValue("_select", out select);
+            dynamicParams.TryGetValue("_select", out var select);
             if (select != null)
             {
                 dynamicParams.Remove("_select");
@@ -810,7 +806,7 @@ namespace ServiceStack
                 q.Select(select);
             }
 
-            dynamicParams.TryGetValue("_from", out from);
+            dynamicParams.TryGetValue("_from", out var from);
             if (from != null)
             {
                 dynamicParams.Remove("_from");
@@ -818,7 +814,7 @@ namespace ServiceStack
                 q.From(from);
             }
 
-            dynamicParams.TryGetValue("_where", out where);
+            dynamicParams.TryGetValue("_where", out var where);
             if (where != null)
             {
                 dynamicParams.Remove("_where");
@@ -887,8 +883,7 @@ namespace ServiceStack
 
                 dynamicParams.Remove(name);
 
-                QueryDbFieldAttribute implicitQuery;
-                QueryFieldMap.TryGetValue(name, out implicitQuery);
+                QueryFieldMap.TryGetValue(name, out var implicitQuery);
 
                 if (implicitQuery?.Field != null)
                     name = implicitQuery.Field;
@@ -1043,8 +1038,7 @@ namespace ServiceStack
 
             if (match == null)
             {
-                string alias;
-                if (aliases.TryGetValue(name, out alias))
+                if (aliases.TryGetValue(name, out var alias))
                     match = GetQueryMatch(q, alias, options);
 
                 if (match == null && JsConfig.EmitLowercaseUnderscoreNames && name.Contains("_"))
@@ -1059,7 +1053,7 @@ namespace ServiceStack
             if (options == null) return null;
 
             var match = options.IgnoreProperties == null || !options.IgnoreProperties.Contains(name)
-                ? q.FirstMatchingField(name) ?? (name.EndsWith(Pluralized) ? q.FirstMatchingField(name.TrimEnd('s')) : null)
+                ? q.FirstMatchingField(name) ?? (name.EndsWith(Pluralized) ? q.FirstMatchingField(name.Substring(0, name.Length - 1)) : null)
                 : null;
 
             if (match == null)
@@ -1069,7 +1063,7 @@ namespace ServiceStack
                     if (name.Length <= startsWith.Key.Length || !name.StartsWith(startsWith.Key)) continue;
 
                     var field = name.Substring(startsWith.Key.Length);
-                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.TrimEnd('s')) : null);
+                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.Substring(0, field.Length - 1)) : null);
                     if (match != null)
                         return new MatchQuery(match, startsWith.Value);
                 }
@@ -1081,7 +1075,7 @@ namespace ServiceStack
                     if (name.Length <= endsWith.Key.Length || !name.EndsWith(endsWith.Key)) continue;
 
                     var field = name.Substring(0, name.Length - endsWith.Key.Length);
-                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.TrimEnd('s')) : null);
+                    match = q.FirstMatchingField(field) ?? (field.EndsWith(Pluralized) ? q.FirstMatchingField(field.Substring(0, field.Length - 1)) : null);
                     if (match != null)
                         return new MatchQuery(match, endsWith.Value);
                 }

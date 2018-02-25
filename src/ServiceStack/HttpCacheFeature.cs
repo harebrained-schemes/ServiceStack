@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Threading.Tasks;
 using ServiceStack.Text;
 using ServiceStack.Web;
 
@@ -26,10 +27,10 @@ namespace ServiceStack
 
         public void Register(IAppHost appHost)
         {
-            appHost.GlobalResponseFilters.Add(HandleCacheResponses);
+            appHost.GlobalResponseFiltersAsync.Add(HandleCacheResponses);
         }
 
-        public void HandleCacheResponses(IRequest req, IResponse res, object response)
+        public async Task HandleCacheResponses(IRequest req, IResponse res, object response)
         {
             if (req.IsInProcessRequest())
                 return;
@@ -40,12 +41,11 @@ namespace ServiceStack
             var cacheInfo = req.GetItem(Keywords.CacheInfo) as CacheInfo;
             if (cacheInfo?.CacheKey != null)
             {
-                if (CacheAndWriteResponse(cacheInfo, req, res, response))
+                if (await CacheAndWriteResponse(cacheInfo, req, res, response))
                     return;
             }
 
-            var httpResult = response as HttpResult;
-            if (httpResult == null)
+            if (!(response is HttpResult httpResult))
                 return;
 
             cacheInfo = httpResult.ToCacheInfo();
@@ -76,12 +76,16 @@ namespace ServiceStack
 
             if (req.ETagMatch(httpResult.ETag) || req.NotModifiedSince(httpResult.LastModified))
             {
+                foreach (var header in httpResult.Headers)
+                {
+                    res.AddHeader(header.Key, header.Value);
+                }
                 res.EndNotModified();
                 httpResult.Dispose();
             }
         }
 
-        private bool CacheAndWriteResponse(CacheInfo cacheInfo, IRequest req, IResponse res, object response)
+        private async Task<bool> CacheAndWriteResponse(CacheInfo cacheInfo, IRequest req, IResponse res, object response)
         {
             var httpResult = response as IHttpResult;
             var dto = httpResult != null ? httpResult.Response : response;
@@ -94,13 +98,11 @@ namespace ServiceStack
             var responseBytes = dto as byte[];
             if (responseBytes == null)
             {
-                var rawStr = dto as string;
-                if (rawStr != null)
+                if (dto is string rawStr)
                     responseBytes = rawStr.ToUtf8Bytes();
                 else
                 {
-                    var stream = dto as Stream;
-                    if (stream != null)
+                    if (dto is Stream stream)
                         responseBytes = stream.ReadFully();
                 }
             }
@@ -112,44 +114,48 @@ namespace ServiceStack
             if (response is HttpResult customResult)
             {
                 if (customResult.View != null)
-                    req.Items["View"] = customResult.View;
+                    req.Items[Keywords.View] = customResult.View;
                 if (customResult.Template != null)
-                    req.Items["Template"] = customResult.Template;
+                    req.Items[Keywords.Template] = customResult.Template;
             }
 
-            var cacheKeyEncoded = encoding != null ? cacheInfo.CacheKey + "." + encoding : null;
-            if (responseBytes != null || req.ResponseContentType.IsBinary())
+            using (httpResult?.ResultScope?.Invoke())
+            using (HostContext.Config.AllowJsConfig ? JsConfig.CreateScope(req.QueryString[Keywords.JsConfig]) : null)
             {
-                if (responseBytes == null)
-                    responseBytes = HostContext.ContentTypes.SerializeToBytes(req, dto);
-
-                cache.Set(cacheInfo.CacheKey, responseBytes, expiresIn);
-
-                if (encoding != null)
+                var cacheKeyEncoded = encoding != null ? cacheInfo.CacheKey + "." + encoding : null;
+                if (responseBytes != null || req.ResponseContentType.IsBinary())
                 {
-                    res.AddHeader(HttpHeaders.ContentEncoding, encoding);
-                    responseBytes = responseBytes.CompressBytes(encoding);
-                    cache.Set(cacheKeyEncoded, responseBytes, expiresIn);
+                    if (responseBytes == null)
+                        responseBytes = HostContext.ContentTypes.SerializeToBytes(req, dto);
+
+                    cache.Set(cacheInfo.CacheKey, responseBytes, expiresIn);
+
+                    if (encoding != null)
+                    {
+                        res.AddHeader(HttpHeaders.ContentEncoding, encoding);
+                        responseBytes = responseBytes.CompressBytes(encoding);
+                        cache.Set(cacheKeyEncoded, responseBytes, expiresIn);
+                    }
                 }
-            }
-            else
-            {
-                var serializedDto = req.SerializeToString(dto);
-                if (req.ResponseContentType.MatchesContentType(MimeTypes.Json))
+                else
                 {
-                    var jsonp = req.GetJsonpCallback();
-                    if (jsonp != null)
-                        serializedDto = jsonp + "(" + serializedDto + ")";
-                }
+                    var serializedDto = req.SerializeToString(dto);
+                    if (req.ResponseContentType.MatchesContentType(MimeTypes.Json))
+                    {
+                        var jsonp = req.GetJsonpCallback();
+                        if (jsonp != null)
+                            serializedDto = jsonp + "(" + serializedDto + ")";
+                    }
 
-                responseBytes = serializedDto.ToUtf8Bytes();
-                cache.Set(cacheInfo.CacheKey, responseBytes, expiresIn);
+                    responseBytes = serializedDto.ToUtf8Bytes();
+                    cache.Set(cacheInfo.CacheKey, responseBytes, expiresIn);
 
-                if (encoding != null)
-                {
-                    res.AddHeader(HttpHeaders.ContentEncoding, encoding);
-                    responseBytes = responseBytes.CompressBytes(encoding);
-                    cache.Set(cacheKeyEncoded, responseBytes, expiresIn);
+                    if (encoding != null)
+                    {
+                        res.AddHeader(HttpHeaders.ContentEncoding, encoding);
+                        responseBytes = responseBytes.CompressBytes(encoding);
+                        cache.Set(cacheKeyEncoded, responseBytes, expiresIn);
+                    }
                 }
             }
 
@@ -179,7 +185,7 @@ namespace ServiceStack
                 }
             }
 
-            res.WriteBytesToResponse(responseBytes, req.ResponseContentType);
+            await res.WriteBytesToResponse(responseBytes, req.ResponseContentType);
             return true;
         }
 
@@ -252,8 +258,7 @@ namespace ServiceStack
                 var ifModifiedSince = req.Headers[HttpHeaders.IfModifiedSince];
                 if (ifModifiedSince != null)
                 {
-                    DateTime modifiedSinceDate;
-                    if (DateTime.TryParse(ifModifiedSince, new DateTimeFormatInfo(), DateTimeStyles.RoundtripKind, out modifiedSinceDate))
+                    if (DateTime.TryParse(ifModifiedSince, new DateTimeFormatInfo(), DateTimeStyles.RoundtripKind, out var modifiedSinceDate))
                     {
                         var lastModifiedUtc = lastModified.Value.Truncate(TimeSpan.FromSeconds(1)).ToUniversalTime();
                        return modifiedSinceDate >= lastModifiedUtc;

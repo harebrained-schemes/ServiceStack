@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace ServiceStack
 {
@@ -53,6 +54,27 @@ namespace ServiceStack
             }
 
             return RequestAttributes.FormatOther;
+        }
+        
+        public static readonly Dictionary<string, string> ContentTypeAliases = new Dictionary<string, string> {
+            { MimeTypes.JsonText, MimeTypes.Json },
+            { MimeTypes.XmlText, MimeTypes.Xml },
+            { MimeTypes.JsvText, MimeTypes.Jsv },
+            { MimeTypes.YamlText, MimeTypes.Yaml },
+        };
+
+        public static string NormalizeContentType(string contentType)
+        {
+            if (string.IsNullOrEmpty(contentType))
+                return null;
+
+            if (contentType == MimeTypes.Soap11)
+                return MimeTypes.Soap11;
+
+            var realContentType = GetRealContentType(contentType);
+            return ContentTypeAliases.TryGetValue(realContentType, out var alias)
+                ? alias
+                : realContentType;
         }
 
         //lowercases and trims left part of content-type prior ';'
@@ -113,7 +135,7 @@ namespace ServiceStack
             }
             
             return start != -1 && matchStart != -1 && matchEnd != -1
-                  && String.Compare(contentType, start,
+                  && string.Compare(contentType, start,
                         matchesContentType, matchStart, matchEnd - matchStart + 1,
                         StringComparison.OrdinalIgnoreCase) == 0;
         }
@@ -190,6 +212,11 @@ namespace ServiceStack
 
         public static string GetContentFormat(Format format)
         {
+            if (format == Format.Soap11)
+                return "soap11";
+            if (format == Format.Soap12)
+                return "soap12";
+            
             var formatStr = format.ToString().ToLowerInvariant();
             return format == Format.MsgPack || format == Format.ProtoBuf
                 ? "x-" + formatStr
@@ -198,6 +225,11 @@ namespace ServiceStack
 
         public static string GetContentFormat(string contentType)
         {
+            if (contentType == MimeTypes.Soap11)
+                return "soap11";
+            if (contentType == MimeTypes.Soap12)
+                return "soap12";
+            
             return contentType?.RightPart('/');
         }
 

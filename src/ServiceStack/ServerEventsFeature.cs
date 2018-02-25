@@ -571,8 +571,8 @@ namespace ServiceStack
         private static readonly ILog Log = LogManager.GetLogger(typeof(MemoryServerEvents));
         public static bool FlushNopOnSubscription = true;
 
-        public TimeSpan IdleTimeout { get; set; }
-        public TimeSpan HouseKeepingInterval { get; set; }
+        public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(30);
+        public TimeSpan HouseKeepingInterval { get; set; } = TimeSpan.FromSeconds(5);
 
         public Action<IEventSubscription> OnSubscribe { get; set; }
         public Action<IEventSubscription> OnUnsubscribe { get; set; }
@@ -675,9 +675,9 @@ namespace ServiceStack
             Notify(UserNameSubcriptions, userName, selector, message, channel);
         }
 
-        public void NotifySession(string sspid, string selector, object message, string channel = null)
+        public void NotifySession(string sessionId, string selector, object message, string channel = null)
         {
-            Notify(SessionSubcriptions, sspid, selector, message, channel);
+            Notify(SessionSubcriptions, sessionId, selector, message, channel);
         }
 
         protected void Notify(ConcurrentDictionary<string, ConcurrentDictionary<IEventSubscription, bool>> map,
@@ -1080,8 +1080,7 @@ namespace ServiceStack
             if (key == null || subscription == null)
                 return;
 
-            IEventSubscription inMap;
-            map.TryRemove(key, out inMap);
+            map.TryRemove(key, out _);
         }
 
         void HandleUnsubscription(IEventSubscription subscription)
@@ -1129,7 +1128,7 @@ namespace ServiceStack
 
         void NotifyUserName(string userName, string selector, object message, string channel = null);
 
-        void NotifySession(string sspid, string selector, object message, string channel = null);
+        void NotifySession(string sessionId, string selector, object message, string channel = null);
 
         SubscriptionInfo GetSubscriptionInfo(string id);
 
@@ -1248,8 +1247,7 @@ namespace ServiceStack
             if (dic == null || key == null)
                 return default(TElement);
 
-            TElement res;
-            dic.TryGetValue(key, out res);
+            dic.TryGetValue(key, out var res);
             return res;
         }
 

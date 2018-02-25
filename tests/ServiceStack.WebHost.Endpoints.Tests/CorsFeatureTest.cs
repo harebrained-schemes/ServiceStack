@@ -46,7 +46,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             : AppHostHttpListenerBase
         {
             public CorsFeatureAppHostHttpListener()
-                : base("Cors Feature Tests", typeof(CorsFeatureService).GetAssembly()) { }
+                : base("Cors Feature Tests", typeof(CorsFeatureService).Assembly) { }
 
             public override void Configure(Funq.Container container) {}
         }
@@ -74,7 +74,7 @@ namespace ServiceStack.WebHost.Endpoints.Tests
             new JsvServiceClient(Config.AbsoluteBaseUri)
         };
 
-        [Test, Explicit]
+        [Test, Ignore("Debug Only")]
         public void RunFor5Mins()
         {
             Thread.Sleep(TimeSpan.FromMinutes(5));

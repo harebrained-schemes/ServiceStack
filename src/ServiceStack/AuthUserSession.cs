@@ -70,8 +70,7 @@ namespace ServiceStack
         {
             if (!FromToken) //If populated from a token it should have the complete list of permissions
             {
-                var managesRoles = authRepo as IManageRoles;
-                if (managesRoles != null)
+                if (authRepo is IManageRoles managesRoles)
                 {
                     if (UserAuthId == null)
                         return false;
@@ -87,8 +86,7 @@ namespace ServiceStack
         {
             if (!FromToken) //If populated from a token it should have the complete list of roles
             {
-                var managesRoles = authRepo as IManageRoles;
-                if (managesRoles != null)
+                if (authRepo is IManageRoles managesRoles)
                 {
                     if (UserAuthId == null)
                         return false;
@@ -144,12 +142,6 @@ namespace ServiceStack
                 }
             }
             return null;
-        }
-
-        [Obsolete("Use GetAuthTokens()")]
-        public static IAuthTokens GetOAuthTokens(this IAuthSession session, string provider)
-        {
-            return GetAuthTokens(session, provider);
         }
 
         public static string GetProfileUrl(this IAuthSession authSession, string defaultUrl = null)
