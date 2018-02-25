@@ -94,7 +94,7 @@ namespace ServiceStack.Mvc
             if (!viewPath.EndsWith(".cshtml"))
                 viewPath += ".cshtml";
 
-            var viewEngineResult = viewEngine.GetView("", viewPath, 
+            var viewEngineResult = viewEngine.GetView("", viewPath,
                 isMainPage: viewPath == "~/wwwroot/default.cshtml");
 
             if (!viewEngineResult.Success)
@@ -107,8 +107,8 @@ namespace ServiceStack.Mvc
                     isMainPage: viewPath == $"{PagesPath}/default.cshtml");
             }
 
-            return viewEngineResult.Success 
-                ? viewEngineResult 
+            return viewEngineResult.Success
+                ? viewEngineResult
                 : null;
         }
 
@@ -192,13 +192,13 @@ namespace ServiceStack.Mvc
             };
         }
 
-        internal async Task RenderView(IRequest req, Stream stream, ViewDataDictionary viewData, IView view, string layout=null)
+        internal async Task RenderView(IRequest req, Stream stream, ViewDataDictionary viewData, IView view, string layout = null)
         {
             var razorView = view as RazorView;
             try
             {
                 var actionContext = new ActionContext(
-                    ((HttpRequest) req.OriginalRequest).HttpContext,
+                    ((HttpRequest)req.OriginalRequest).HttpContext,
                     new RouteData(),
                     new ActionDescriptor());
 
@@ -447,7 +447,7 @@ namespace ServiceStack.Mvc
     //Workaround base-class to fix R# intelli-sense issue
     public abstract class ResharperViewPage<T> : ViewPage<object>
     {
-        public T Dto => (T) Model;
+        public T Dto => (T)Model;
     }
 
     //Razor Pages still only work when base class is RazorPage<object>

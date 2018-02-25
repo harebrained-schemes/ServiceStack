@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard1.6</TargetFrameworks>
-    <TargetFrameworks>net45;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <AssemblyName>ServiceStack.Client</AssemblyName>
     <PackageId>ServiceStack.Client</PackageId>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
@@ -21,49 +20,16 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="MSBuild.Sdk.Extras" Version="1.0.1" PrivateAssets="all" />
+  </ItemGroup>
+
   <ItemGroup Condition=" '$(Configuration)' == 'Debug' ">
     <Compile Include="..\..\ServiceStack.Client\**\*.cs" Exclude="bin\**;obj\**;**\*.xproj;packages\**" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(Configuration)' == 'Release' ">
     <Compile Include="..\..\ServiceStack.Client\**\*.cs" Exclude="bin\**;obj\**;**\*.xproj;packages\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
-  </ItemGroup>
-
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net45' ">
-    <DefineConstants>$(DefineConstants);NET45</DefineConstants>
-    <SignAssembly>True</SignAssembly>
-    <DelaySign>False</DelaySign>
-    <AssemblyOriginatorKeyFile>../servicestack.snk</AssemblyOriginatorKeyFile>
-  </PropertyGroup>
-
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
-    <Reference Include="System.ServiceModel" />
-    <Reference Include="System.Web" />
-    <ProjectReference Include="..\..\..\ServiceStack.Text\src\ServiceStack.Text\ServiceStack.Text.csproj" />
-    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
-  </ItemGroup>
-
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard1.1' ">
-    <DefineConstants>$(DefineConstants);NETSTANDARD1_1</DefineConstants>
-  </PropertyGroup>
-
-  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard1.1' ">
-    <PackageReference Include="Microsoft.NETCore.Portable.Compatibility" Version="1.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Primitives" Version="1.1.1" />
-    <PackageReference Include="System.Net.Requests" Version="4.3.0" />
-    <PackageReference Include="System.ServiceModel.Primitives" Version="4.3.0" />
-    <PackageReference Include="System.Xml.XmlSerializer" Version="4.3.0" />
-    <ProjectReference Include="..\..\..\ServiceStack.Text\src\ServiceStack.Text\ServiceStack.Text.csproj" />
-    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
-  </ItemGroup>
-
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard1.6' ">
-    <DefineConstants>$(DefineConstants);NETSTANDARD1_6</DefineConstants>
-    <Reference Include="..\..\lib\net45\ServiceStack.Text.dll" />
   </ItemGroup>
 
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
@@ -80,51 +46,9 @@
     <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
   </ItemGroup>
 
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'portable45-net45+win8' ">
-    <DefineConstants>$(DefineConstants);PCL;PORTABLE7</DefineConstants>
-    <TargetFrameworkIdentifier>.NETPortable</TargetFrameworkIdentifier>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <TargetFrameworkProfile>Profile7</TargetFrameworkProfile>
-    <LanguageTargets>$(MSBuildProgramFiles32)\MSBuild\Microsoft\Portable\$(TargetFrameworkVersion)\Microsoft.Portable.CSharp.targets</LanguageTargets>
-  </PropertyGroup>
-
-  <ItemGroup Condition=" '$(TargetFramework)' == 'portable45-net45+win8' ">
-    <Reference Include="System" />
-    <Reference Include="System.IO" />
-    <Reference Include="System.IO.Compression" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Linq" />
-    <Reference Include="System.Net" />
-    <Reference Include="System.Net.Requests" />
-    <Reference Include="System.Net.Primitives" />
-    <Reference Include="System.Globalization" />
-    <Reference Include="System.Runtime" />
-    <Reference Include="System.Runtime.Extensions" />
-    <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.Runtime.Serialization.Primitives" />
-    <Reference Include="System.Runtime.Serialization.Xml" />
-    <Reference Include="System.Runtime.InteropServices" />
-    <Reference Include="System.Reflection" />
-    <Reference Include="System.Reflection.Extensions" />
-    <Reference Include="System.Threading" />
-    <Reference Include="System.Threading.Tasks" />
-    <Reference Include="System.Collections" />
-    <Reference Include="System.Collections.Concurrent" />
-    <Reference Include="System.Text.Encoding" />
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xml.ReaderWriter" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Dynamic.Runtime" />
-    <ProjectReference Include="..\..\..\ServiceStack.Text\src\ServiceStack.Text\ServiceStack.Text.csproj" />
-    <ProjectReference Include="..\ServiceStack.Interfaces\ServiceStack.Interfaces.csproj" />
-  </ItemGroup>
-
   <Import Project="$(MSBuildSDKExtrasTargets)" Condition="Exists('$(MSBuildSDKExtrasTargets)')" />
 
   <PropertyGroup>
     <DebugType>Full</DebugType>
   </PropertyGroup>
-    <Reference Include="..\..\lib\netstandard2.0\ServiceStack.Text.dll" />
-  </ItemGroup>
-
 </Project>
